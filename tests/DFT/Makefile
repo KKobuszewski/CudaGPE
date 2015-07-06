@@ -10,6 +10,9 @@ PROG=cu_add_in_place
 
 OBJS =  main.o kernels.o
 
+fftw3: main.c fftw_dft.c
+	gcc -o $@ main.c fftw_dft.c -lfftw3 -lm -O3 -march=native -msse2 -Wall -std=c99 #$(CFLAGS)
+
 all: $(PROG)
        
 $(PROG):	$(OBJS)

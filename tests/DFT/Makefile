@@ -1,22 +1,25 @@
 CC        = g++
 NVCC      = /usr/local/cuda-7.0/bin/nvcc
 LD        = $(NVCC)
-CFLAGS    = -Wall -O3 -I /usr/local/cuda/include -march=native -msse2 -ffast-math -fassociative-math -ftree-vectorizer-verbose=2
-LIBS      = 
+CFLAGS    = -std=c99 -Wall -I /usr/local/cuda/include -march=native -O3 -msse2 -ffast-math -fassociative-math -ftree-vectorizer-verbose=2
+CLIBS     = -lfftw3 -lm
+CULIBS      = -lcufft
 
-#NVCCPARMS += -arch sm_13
+NVCCPARMS += -g -G -Xptxas="-v" -I /usr/local/cuda-7.0/include
+#-O3 -use_fast_math
+# -arch sm_13 <- byc moze potrzeba zeby dobrze double liczyl 
 
-PROG=cu_add_in_place
+PROG=dft_test
 
-OBJS =  main.o kernels.o
+OBJS =  main.o fftw_dft.o cuda_dft.o cudautils.o
 
 fftw3: main.c fftw_dft.c
-	gcc -o $@ main.c fftw_dft.c -lfftw3 -lm -O3 -march=native -msse2 -Wall -std=c99 #$(CFLAGS)
+	gcc -o $@ main.c fftw_dft.c $(CLIBS) $(CFLAGS)
 
 all: $(PROG)
        
 $(PROG):	$(OBJS)
-		$(LD) -o $@ $(OBJS) $(LIBS)
+		$(LD) -o $@ $(OBJS) $(CULIBS) $(CLIBS)
        
 
 NVCCINC=-I $(CUDASDK)/common/inc
@@ -24,7 +27,7 @@ NVCCINC=-I $(CUDASDK)/common/inc
 .SUFFIXES:
 
 %.o:	%.cu
-		$(NVCC) $(NVCCPARMS) -o $@ -c $<
+		$(NVCC) -o $@ -c $< $(NVCCPARMS) $(CULIBS)
 
 %.o:	%.c
 		$(CC) $(CFLAGS) -o $@ -c $<

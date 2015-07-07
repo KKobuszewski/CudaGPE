@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "fftw_dft.h"
+#include "timing_host.h"
 
 extern inline void print_timeit(clock_t time_to_print, const char* message);
 extern inline void fwrite_timeit(clock_t time, FILE* file);
@@ -104,6 +105,7 @@ void perform_fftw3_1d(const uint64_t N, FILE** array_timing) {
     fwrite(data_backward_1d+ii, sizeof(fftw_complex),1,file1d);
   }
   
+  printf("fftw3 executed.\n");
   
   // cleaning up the mesh
   fftw_free(data_in_1d);

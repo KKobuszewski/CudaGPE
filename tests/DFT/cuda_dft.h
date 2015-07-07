@@ -5,7 +5,7 @@
 
 
 // functions
-void perform_fftw3_1d(const uint64_t N, FILE** array_timing);
+void perform_cufft_1d(const uint64_t N, FILE** array_timing);
 
 
 

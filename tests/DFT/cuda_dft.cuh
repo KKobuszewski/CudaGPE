@@ -13,6 +13,6 @@
 #define SIGMA (1)
 
 
-__global__ void cudaGauss_1d(cufftDoubleComplex* data, uint64_t N);
+__global__ void cudaGauss_1d(cufftDoubleComplex* data, const unsigned long long N);
 
 #endif

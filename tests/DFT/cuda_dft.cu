@@ -112,6 +112,23 @@ void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
     fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
   }
   
+  // inplace
+  CUDATIMEIT_START;
+  if (cufftExecZ2Z(plan_forward, data_dev, data_dev, CUFFT_INVERSE) != CUFFT_SUCCESS){
+    fprintf(stderr, "CUFFT error: ExecZ2Z Forward failed!\n");
+    exit( EXIT_FAILURE );
+  }
+  CUDATIMEIT_STOP;
+  fprint_cudatimeit(array_timing[2]);
+  
+  HANDLE_ERROR( cudaMemcpy(data_host, data_dev, N*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost) );
+  HANDLE_ERROR( cudaDeviceSynchronize() );
+  
+  for (uint16_t ii = 0; ii < N; ii++) {
+    fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
+  }
+  
+  
   //  cleaning up the mesh
   HANDLE_ERROR( cudaFree(data_dev) );
   HANDLE_ERROR( cudaFreeHost(data_host) );

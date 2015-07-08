@@ -5,8 +5,11 @@
 #include <pthread.h>
 #include <cuda_runtime.h>
 #include <cuComplex.h>
+#include <cufft.h>
 
 #include "cudautils.h"
+
+#define N 32
 
 // global variables
 // threads
@@ -20,14 +23,16 @@ enum stream_id {KERNEL_STREAM, MEMORY_STREAM};
 typedef struct DataArray{
  double complex** data_r;
  double complex** data_k;
+ cuDoubleComplex** data_r_dev;
+ cuDoubleComplex** data_k_dev;
  uint64_t size;
 } DataArray;
 
 void create_data_arr(DataArray* data_arr,
 		     double complex** data_r,
 		     double complex** data_k,
-		     cuDoubleComplex** data_r_dev,
-		     cuDoubleComplex** data_k_dev,
+		     /*cuDoubleComplex** data_r_dev,*/
+		     /*cuDoubleComplex** data_k_dev,*/
 		     const uint64_t size) {
   data_arr->data_r=data_r;
   data_arr->data_k=data_k;
@@ -35,8 +40,10 @@ void create_data_arr(DataArray* data_arr,
 }
 
 void free_data_arr(DataArray* data_arr) {
-  free(*(data_arr->data_r));
-  free(*(data_arr->data_k));
+  cudaFreeHost(*(data_arr->data_r));
+  cudaFreeHost(*(data_arr->data_k));
+  cudaFree(*(data_arr->data_r_dev));
+  cudaFree(*(data_arr->data_k_dev));
 }
 
 void alloc_data_host(DataArray* data_arr) {
@@ -54,28 +61,64 @@ void alloc_data_host(DataArray* data_arr) {
 }
 
 void alloc_data_device(DataArray* data_arr) {
-  cudaMalloc((void**) data_arr->data_r_dev, sizeof(double complex)*N, cudaHostAllocDefault); // pinnable memory <- check here for cudaMallocHost (could be faster)
-  cudaMalloc((void**) data_arr->data_k_dev, sizeof(double complex)*N, cudaHostAllocDefault); // pinnable memory
+  cudaMalloc((void**) data_arr->data_r_dev, sizeof(double complex)*N); // pinnable memory <- check here for cudaMallocHost (could be faster)
+  cudaMalloc((void**) data_arr->data_k_dev, sizeof(double complex)*N); // pinnable memory
 }
 
 /*
  * Function to be called in thread managing host operations and invoking kernels
  */
-void* host_thread(void* passing_ptr){
+void* host_thread(void* passing_ptr) {
   DataArray* data_arr_ptr = (DataArray*) passing_ptr;
   
   alloc_data_host(data_arr_ptr);
   printf("data allocated by host thread\n");
   
-  printf("data filling by host thread\n");
+  //printf("data filling by host thread\n");
   for (uint64_t ii = 0; ii < data_arr_ptr->size; ii++) {
     (*(data_arr_ptr->data_r))[ii] = ii;
     (*(data_arr_ptr->data_k))[ii] = data_arr_ptr->size-ii;
   }
   printf("data filled by host thread\n");
   
-  // synchronize with another thread
+  // synchronize after allocating memory - streams should be created, mem on device ready for copying
   pthread_barrier_wait (&barrier);
+  printf("1st barier host thread - allocating mem on cpu\n");
+  
+  
+  
+  
+  
+  //  here we can make cufft plan, for example
+  cufftHandle plan_forward;
+  cufftPlan1d(&plan_forward, N, CUFFT_Z2Z, 1);
+  
+  
+  
+  // synchornize after ... - data should be copyied on device
+  pthread_barrier_wait (&barrier);
+  printf("2nd barier host thread - \n");
+  
+  
+  // run some computations
+  cufftExecZ2Z(plan_forward, *(data_arr_ptr->data_r_dev), *(data_arr_ptr->data_k_dev), CUFFT_FORWARD);
+  
+  // synchornize after computations - 
+  pthread_barrier_wait (&barrier);
+  printf("3rd barier host thread - \n");
+  
+  
+  
+  // synchornize after computations - 
+  pthread_barrier_wait (&barrier);
+  printf("4th barier host thread - \n");
+  
+  printf("data visible in device thread:\n");
+  for (uint64_t ii = 0; ii < data_arr_ptr->size; ii++) {
+    printf("%lu.\t",ii);
+    printf("%lf + %lfj\t", creal( (*(data_arr_ptr->data_r))[ii] ), cimag( (*(data_arr_ptr->data_r))[ii] ));
+    printf("%lf + %lfj\n", creal( (*(data_arr_ptr->data_k))[ii] ), cimag( (*(data_arr_ptr->data_k))[ii] ));
+  }
   
   printf("closing host thread\n");
   pthread_exit(NULL);
@@ -86,14 +129,45 @@ void* host_thread(void* passing_ptr){
  * Function to be called 
  */
 void* device_thread(void* passing_ptr) {
-  DataArray* data_arr_ptr = (DataArray*) passing_ptr;
+  DataArray* data_arr_ptr = (DataArray*) passing_ptr; // casting passed pointer
+  
+  
+  cuDoubleComplex* data_r_dev;
+  cuDoubleComplex* data_k_dev;
+  data_arr_ptr->data_r_dev = &data_r_dev; // in this way it would be easier to handle pointer to arrays
+  data_arr_ptr->data_k_dev = &data_k_dev;
+  
+  // Each thread creates new stream ustomatically???
+  // http://devblogs.nvidia.com/parallelforall/gpu-pro-tip-cuda-7-streams-simplify-concurrency/
+  cudaStreamCreate(streams_arr);
+  cudaStreamCreate(streams_arr+1);
   
   // init device, allocate suitable variables in gpu memory ...
+  alloc_data_device(data_arr_ptr);
+  printf("data allocated by host thread\n");
   
-  print_device();
   
-  // synchronize with another thread
+  // synchronize after allocating memory - data on host should be allocated and ready for copying
+  cudaDeviceSynchronize(); // CHECK IF THIS DO NOT CAUSE ERRORS! - should syncronize host and device irrespective on pthreads
+  // cudaStreamSynchronize( <enum stream> ); // to synchronize only with stream !!!
   pthread_barrier_wait (&barrier);
+  printf("1st barier device thread - allocating mem on gpu\n");
+  
+  
+  
+  
+  //copying data
+  cudaMemcpyAsync(data_arr_ptr->data_r_dev, data_arr_ptr->data_r, N*sizeof(cuDoubleComplex), cudaMemcpyHostToDevice, streams_arr[MEMORY_STREAM]);
+  
+  // synchronize after copying data
+  cudaDeviceSynchronize(); // should be used on
+  pthread_barrier_wait (&barrier);
+  printf("2nd barier device thread - copying data on gpu\n");
+  
+  
+  
+  
+  
   
   printf("data visible in device thread:\n");
   for (uint64_t ii = 0; ii < data_arr_ptr->size; ii++) {
@@ -101,6 +175,26 @@ void* device_thread(void* passing_ptr) {
     printf("%lf + %lfj\t", creal( (*(data_arr_ptr->data_r))[ii] ), cimag( (*(data_arr_ptr->data_r))[ii] ));
     printf("%lf + %lfj\n", creal( (*(data_arr_ptr->data_k))[ii] ), cimag( (*(data_arr_ptr->data_k))[ii] ));
   }
+  
+  // synchronize after copying
+  cudaDeviceSynchronize(); // should be used on
+  pthread_barrier_wait (&barrier);
+  printf("3rd barier device thread - \n");
+  
+  
+  
+  //copying data
+  cudaMemcpyAsync(data_arr_ptr->data_r, data_arr_ptr->data_r_dev, N*sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost, streams_arr[MEMORY_STREAM]);
+  
+  
+  
+  // synchronize after copying back data
+  cudaDeviceSynchronize(); // should be used on
+  pthread_barrier_wait (&barrier);
+  printf("4th barier device thread - \n");
+  
+  
+  
   
   
   printf("closing device thread\n");
@@ -116,12 +210,19 @@ void* device_thread(void* passing_ptr) {
  */
 int main() {
   
+  // print device properties
+  print_device();
+    
   // create pointers to data
-  const uint64_t size = 50;
+  const uint64_t size = N;
   double complex* data_r_host = NULL; // initializing with NULL for debuging purposes
   double complex* data_k_host = NULL; // initializing with NULL for debuging purposes
   DataArray* data_arr_ptr = (DataArray*) malloc((size_t) sizeof(DataArray)); // change to global variable <- easier to code
   create_data_arr(data_arr_ptr, &data_r_host, &data_k_host, size);
+  
+  // allocate memory for array of streams
+  const uint8_t num_streams = 2; // rewrite on defines?
+  streams_arr = (cudaStream_t*) malloc( (size_t) sizeof(cudaStream_t)*num_streams);
   
   // create threads
   const uint8_t num_threads = 2;
@@ -157,6 +258,7 @@ int main() {
   
   
   free(thread_ptr_arr);
+  free(streams_arr);
   free_data_arr(data_arr_ptr);
   free(data_arr_ptr);
   

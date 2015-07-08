@@ -1,7 +1,7 @@
 CC        = g++
 NVCC      = /usr/local/cuda-7.0/bin/nvcc
 LD        = $(NVCC)
-CFLAGS    = -std=c99 -Wall -I /usr/local/cuda/include -march=native -O3 -msse2 -ffast-math -fassociative-math -ftree-vectorizer-verbose=2
+CFLAGS    = -std=c99 -Wall -I /usr/local/cuda/include -march=native -O3 -msse2 -ffast-math -fassociative-math -ftree-vectorizer-verbose=1
 CLIBS     = -lfftw3 -lm
 CULIBS      = -lcufft
 

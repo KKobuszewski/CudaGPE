@@ -77,7 +77,7 @@ void perform_cuda_kernel(int N, const double a, double *x, double *y) {
   //saxpy<<<(N+255)/256, 256>>>(N, a, x_dev, y_dev); <- tu cos nie dziala tak jak trzeba
   for (int ii = 0; ii<FOR_LOOPS; ii++) { // FOR_LOOPS defined in kernels.h
     saxpy<<<GRID_SIZE, BLOCK_SIZE>>>(N, a, x_dev, y_dev);
-     cudaDeviceSynchronize();
+    cudaDeviceSynchronize();
   }
   
   cudaEventRecord(stop_event,0);

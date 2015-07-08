@@ -130,7 +130,7 @@ int main(){
   cudaDeviceReset();
   uint64_t N = 0; // number of samples in dft
   
-  for (uint64_t ii=5; ii <= 15; ii++) {
+  for (uint64_t ii=5; ii <= 16; ii++) {
     N = 1<<ii;
 #ifdef DIM_1D
     printf("\nN = %lu\n",N);

@@ -6,13 +6,13 @@
 
 // !!! these macros need cudaEvent_t start, stop; to be defined globally!!!
 #define CUDATIMEIT_START \
-			  cudaEventCreate(&start); \
-			  cudaEventCreate(&stop); \
-			  cudaEventRecord(start,0)
+			  cudaEventCreate(&start_t); \
+			  cudaEventCreate(&stop_t); \
+			  cudaEventRecord(start_t,0)
 
 #define CUDATIMEIT_STOP \
-			  cudaEventRecord(stop,0); \
-			  cudaEventSynchronize(stop)
+			  cudaEventRecord(stop_t,0); \
+			  cudaEventSynchronize(stop_t)
 
 double print_cudatimeit(const char* message);
 double fprint_cudatimeit(FILE* file);

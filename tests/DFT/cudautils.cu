@@ -4,19 +4,19 @@
 #include "cudautils.cuh"
 
 
-extern cudaEvent_t start;
-extern cudaEvent_t stop;
+extern cudaEvent_t start_t;
+extern cudaEvent_t stop_t;
 
 double print_cudatimeit(const char* message) {
   float computationTime;
-  cudaEventElapsedTime(&computationTime, start, stop);
+  cudaEventElapsedTime(&computationTime, start_t, stop_t);
   printf( "time of %-60s %lf s\n", message, (double) computationTime );
   return (double) computationTime;
 }
 
 double fprint_cudatimeit(FILE* file) {
   float computationTime;
-  cudaEventElapsedTime(&computationTime, start, stop);
+  cudaEventElapsedTime(&computationTime, start_t, stop_t);
   fwrite(&computationTime, (size_t) sizeof(double), 1, file);
   return (double) computationTime;
 }

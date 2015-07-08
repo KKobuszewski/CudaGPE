@@ -14,8 +14,8 @@
 #include "cudautils.cuh"
 
 // timing
-cudaEvent_t start;
-cudaEvent_t stop;
+cudaEvent_t start_t;
+cudaEvent_t stop_t;
 
 
 __global__ void cudaGauss_1d(cufftDoubleComplex* data, const unsigned long long N) {
@@ -71,7 +71,7 @@ void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
   
   
   // fill array
-  int threadsPerBlock = 512;
+  uint64_t threadsPerBlock = 512;
   printf("%lu\n",(N + threadsPerBlock - 1)/threadsPerBlock);
   dim3 dimGrid( (N + threadsPerBlock - 1)/threadsPerBlock, 1, 1 ); // (numElements + threadsPerBlock - 1) / threadsPerBlock
   dim3 dimBlock(threadsPerBlock,1,1);

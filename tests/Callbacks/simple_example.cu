@@ -17,7 +17,8 @@
 /*
  * compile: 	nvcc -dc -lm -g -G -Xptxas="-v" -m64 -O3 -o simple_example.o -c simple_example.cu
  * 		nvcc -m64 -arch=sm_35 -o simple_example simple_example.o -lcufft_static -lculibos
- * 
+ * http://devblogs.nvidia.com/parallelforall/cuda-pro-tip-use-cufft-callbacks-custom-data-processing/
+ * + example in cuda samples
  */
 
 /* CALLBACK TYPES
@@ -154,10 +155,6 @@ int main (){
   }
   
   cudaDeviceSynchronize();
-  
-
-  
-  
   
   // data will be generated in load callback!
   if (cufftExecZ2Z(plan, data_dev, data_dev, CUFFT_FORWARD) != CUFFT_SUCCESS){

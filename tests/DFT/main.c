@@ -130,18 +130,22 @@ int main(){
   cudaDeviceReset();
   uint64_t N = 0; // number of samples in dft
   
-  for (uint64_t ii=5; ii <= 15; ii++) {
+  for (uint64_t ii=8; ii <= 25; ii++) {
     N = 1<<ii;
 #ifdef DIM_1D
     printf("\nN = %lu\n",N);
     //if (N < 65536)
-    perform_fftw3_1d(N, file_timimng);
     perform_cufft_1d(N, file_timimng_cu);
+    perform_fftw3_1d(N, file_timimng);
 #endif
   }
   
   close_files_for_timing(file_timimng);
   close_files_for_timing(file_timimng_cu);
+  
+  
+  cudaThreadExit();
+  cudaDeviceReset();
   
   return 0;
 }

@@ -9,7 +9,7 @@ NVCCPARMS += -g -G -Xptxas="-v" -I /usr/local/cuda-7.0/include
 #-O3 -use_fast_math
 # -arch sm_13 <- byc moze potrzeba zeby dobrze double liczyl 
 
-PROG=dft_test
+PROG=dft2_test
 
 OBJS =  main.o fftw_dft.o cuda_dft.o cudautils.o
 

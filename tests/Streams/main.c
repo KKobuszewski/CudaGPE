@@ -9,7 +9,7 @@
 
 #include "cudautils.h"
 
-#define N 32
+#define N 67108864
 
 // global variables
 // threads
@@ -41,9 +41,15 @@ void create_data_arr(DataArray* data_arr,
 
 void free_data_arr(DataArray* data_arr) {
   cudaFreeHost(*(data_arr->data_r));
+  printf("host r space freed\n");
   cudaFreeHost(*(data_arr->data_k));
-  cudaFree(*(data_arr->data_r_dev));
-  cudaFree(*(data_arr->data_k_dev));
+  printf("host k space freed\n");
+//   cudaFree(*(data_arr->data_r_dev));
+//   cudaDeviceSynchronize();
+//   printf("device r space freed\n");
+//   cudaFree(*(data_arr->data_k_dev));
+//   cudaDeviceSynchronize();
+//   printf("device k space freed\n");
 }
 
 void alloc_data_host(DataArray* data_arr) {
@@ -61,8 +67,8 @@ void alloc_data_host(DataArray* data_arr) {
 }
 
 void alloc_data_device(DataArray* data_arr) {
-  cudaMalloc((void**) data_arr->data_r_dev, sizeof(double complex)*N); // pinnable memory <- check here for cudaMallocHost (could be faster)
-  cudaMalloc((void**) data_arr->data_k_dev, sizeof(double complex)*N); // pinnable memory
+  cudaMalloc((void**) data_arr->data_r_dev, sizeof(double complex)*N); //
+  cudaMalloc((void**) data_arr->data_k_dev, sizeof(double complex)*N); //
 }
 
 /*
@@ -102,8 +108,11 @@ void* host_thread(void* passing_ptr) {
   
   // run some computations
   cufftExecZ2Z(plan_forward, *(data_arr_ptr->data_r_dev), *(data_arr_ptr->data_k_dev), CUFFT_FORWARD);
+  printf("cufft done\n");
   
   // synchornize after computations - 
+  
+  cudaDeviceSynchronize(); // should be used on
   pthread_barrier_wait (&barrier);
   printf("3rd barier host thread - \n");
   
@@ -113,12 +122,12 @@ void* host_thread(void* passing_ptr) {
   pthread_barrier_wait (&barrier);
   printf("4th barier host thread - \n");
   
-  printf("data visible in device thread:\n");
-  for (uint64_t ii = 0; ii < data_arr_ptr->size; ii++) {
+  printf("data visible in host thread:\n");
+  /*for (uint64_t ii = 0; ii < (data_arr_ptr->size <= 32) ? data_arr_ptr->size : 32 ; ii++) {
     printf("%lu.\t",ii);
     printf("%lf + %lfj\t", creal( (*(data_arr_ptr->data_r))[ii] ), cimag( (*(data_arr_ptr->data_r))[ii] ));
     printf("%lf + %lfj\n", creal( (*(data_arr_ptr->data_k))[ii] ), cimag( (*(data_arr_ptr->data_k))[ii] ));
-  }
+  }*/
   
   printf("closing host thread\n");
   pthread_exit(NULL);
@@ -134,18 +143,21 @@ void* device_thread(void* passing_ptr) {
   
   cuDoubleComplex* data_r_dev;
   cuDoubleComplex* data_k_dev;
+  
+  
+  // init device, allocate suitable variables in gpu memory ...
+  //alloc_data_device(data_arr_ptr);
+  cudaMalloc((void**) &data_r_dev, sizeof(double complex)*N); // pinnable memory <- check here for cudaMallocHost (could be faster)
+  cudaMalloc((void**) &data_k_dev, sizeof(double complex)*N); // pinnable memory
   data_arr_ptr->data_r_dev = &data_r_dev; // in this way it would be easier to handle pointer to arrays
   data_arr_ptr->data_k_dev = &data_k_dev;
+  printf("data allocated by host thread\n");
   
   // Each thread creates new stream ustomatically???
   // http://devblogs.nvidia.com/parallelforall/gpu-pro-tip-cuda-7-streams-simplify-concurrency/
-  cudaStreamCreate(streams_arr);
-  cudaStreamCreate(streams_arr+1);
-  
-  // init device, allocate suitable variables in gpu memory ...
-  alloc_data_device(data_arr_ptr);
-  printf("data allocated by host thread\n");
-  
+  cudaStreamCreateWithFlags(streams_arr, cudaStreamNonBlocking);
+  cudaStreamCreateWithFlags(streams_arr+1, cudaStreamNonBlocking);
+  printf("streams created\n");
   
   // synchronize after allocating memory - data on host should be allocated and ready for copying
   cudaDeviceSynchronize(); // CHECK IF THIS DO NOT CAUSE ERRORS! - should syncronize host and device irrespective on pthreads
@@ -157,7 +169,7 @@ void* device_thread(void* passing_ptr) {
   
   
   //copying data
-  cudaMemcpyAsync(data_arr_ptr->data_r_dev, data_arr_ptr->data_r, N*sizeof(cuDoubleComplex), cudaMemcpyHostToDevice, streams_arr[MEMORY_STREAM]);
+  cudaMemcpyAsync( *(data_arr_ptr->data_r_dev), *(data_arr_ptr->data_r), N*sizeof(cuDoubleComplex), cudaMemcpyHostToDevice, streams_arr[MEMORY_STREAM] );
   
   // synchronize after copying data
   cudaDeviceSynchronize(); // should be used on
@@ -170,22 +182,22 @@ void* device_thread(void* passing_ptr) {
   
   
   printf("data visible in device thread:\n");
-  for (uint64_t ii = 0; ii < data_arr_ptr->size; ii++) {
+
+  /*for (uint64_t ii = 0; ii < (data_arr_ptr->size <= 32) ? data_arr_ptr->size : 32 ; ii++) {
     printf("%lu.\t",ii);
     printf("%lf + %lfj\t", creal( (*(data_arr_ptr->data_r))[ii] ), cimag( (*(data_arr_ptr->data_r))[ii] ));
     printf("%lf + %lfj\n", creal( (*(data_arr_ptr->data_k))[ii] ), cimag( (*(data_arr_ptr->data_k))[ii] ));
-  }
+  }*/
   
   // synchronize after copying
-  cudaDeviceSynchronize(); // should be used on
   pthread_barrier_wait (&barrier);
   printf("3rd barier device thread - \n");
   
   
   
   //copying data
-  cudaMemcpyAsync(data_arr_ptr->data_r, data_arr_ptr->data_r_dev, N*sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost, streams_arr[MEMORY_STREAM]);
-  
+  //cudaMemcpyAsync( *(data_arr_ptr->data_r), *(data_arr_ptr->data_r_dev), N*sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost, streams_arr[MEMORY_STREAM] );
+  cudaMemcpyAsync( *(data_arr_ptr->data_r), data_r_dev, N*sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost, streams_arr[MEMORY_STREAM] );
   
   
   // synchronize after copying back data
@@ -194,8 +206,14 @@ void* device_thread(void* passing_ptr) {
   printf("4th barier device thread - \n");
   
   
+  cudaStreamDestroy(streams_arr[KERNEL_STREAM]);
+  cudaStreamDestroy(streams_arr[MEMORY_STREAM]);
   
-  
+  cudaFree(data_r_dev);
+  printf("device r space freed\n");
+  cudaFree(data_k_dev);
+  cudaDeviceSynchronize();
+  printf("device k space freed\n");
   
   printf("closing device thread\n");
   pthread_exit(NULL);  
@@ -209,6 +227,9 @@ void* device_thread(void* passing_ptr) {
  * https://www.google.pl/search?client=ubuntu&channel=fs&q=how+to+schedule+pthreads+through+cores&ie=utf-8&oe=utf-8&gfe_rd=cr&ei=PSudVePFOqeA4AShra2AAQ
  */
 int main() {
+  
+  cudaDeviceReset();
+  cudaDeviceSynchronize();
   
   // print device properties
   print_device();
@@ -249,20 +270,22 @@ int main() {
   pthread_join(thread_ptr_arr[DEVICE_THRD], &status);
   
   printf("data visible in main thread:\n");
-  for (uint64_t ii=0; ii < data_arr_ptr->size; ii++) {
+  /*for (uint64_t ii=0; ii < (data_arr_ptr->size <= 32) ? data_arr_ptr->size : 32 ; ii++) {
     printf( "%lu.\t",ii );
     printf( "%lf + %lf\t", creal(data_r_host[ii]), cimag(data_r_host[ii]) );
     printf( "%lf + %lf\n", creal(data_k_host[ii]), cimag(data_k_host[ii]) );
-  }
+  }*/
   
   
   
   free(thread_ptr_arr);
   free(streams_arr);
   free_data_arr(data_arr_ptr);
+  cudaDeviceSynchronize();
   free(data_arr_ptr);
   
-  
+  cudaThreadExit();
+  cudaDeviceSynchronize();
   
   printf("Main: program completed. Exiting...\n");
   return EXIT_SUCCESS;

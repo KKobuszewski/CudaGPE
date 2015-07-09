@@ -18,9 +18,9 @@ cudaEvent_t start_t;
 cudaEvent_t stop_t;
 
 
-__global__ void cudaGauss_1d(cufftDoubleComplex* data, const unsigned long long N) {
+__global__ void cudaGauss_1d(cufftDoubleComplex* data, const uint64_t N) {
   // get the index of thread
-  unsigned long long ii = blockIdx.x*blockDim.x + threadIdx.x;
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
   // allocate constants in shared memory
   const double x0 = (-5*SIGMA);
@@ -38,6 +38,7 @@ __global__ void cudaGauss_1d(cufftDoubleComplex* data, const unsigned long long 
 void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
   
   // initilizing files to save data
+  
   const uint8_t filename_str_lenght = 128;
   const uint8_t dim = 1;
     
@@ -62,31 +63,45 @@ void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
   printf("sizeof(cufftDoubleComplex): %lu\n", sizeof(cufftDoubleComplex));
   printf("memory: %lu kB\n", sizeof(cufftDoubleComplex)*N/1024);
   HANDLE_ERROR( cudaMalloc((void**) &data_dev, sizeof(cufftDoubleComplex)*N) );
-  if (N < 65536) {
+  cudaDeviceSynchronize();
+  //if (N < 65536) {
     HANDLE_ERROR( cudaHostAlloc((void**) &data_host, sizeof(cufftDoubleComplex)*N, cudaHostAllocDefault) ); // when to use pinned memory: http://www.cs.virginia.edu/~mwb7w/cuda_support/pinned_tradeoff.html
-  }
-  else {
-    data_host = (cufftDoubleComplex*) malloc(sizeof(cufftDoubleComplex)*N);
-  }
-  
+  //}
+  //else {
+  //  data_host = (cufftDoubleComplex*) malloc(sizeof(cufftDoubleComplex)*N);
+  //}
+  //printf("data host ptr: %p\n",data_host);
+  //printf("data host ptr: %p\n",data_dev);
   
   // fill array
-  uint64_t threadsPerBlock = 512;
-  printf("%lu\n",(N + threadsPerBlock - 1)/threadsPerBlock);
-  dim3 dimGrid( (N + threadsPerBlock - 1)/threadsPerBlock, 1, 1 ); // (numElements + threadsPerBlock - 1) / threadsPerBlock
+  uint64_t threadsPerBlock;
+  if (N >= 33554432)
+    threadsPerBlock = 1024;
+  else
+    threadsPerBlock = 512;
   dim3 dimBlock(threadsPerBlock,1,1);
+  printf("threads Per block: %lu\n", threadsPerBlock);
+  printf("blocks: %lu\n",(N + threadsPerBlock - 1)/threadsPerBlock);
+  
+  //dim3 dimGrid( (N + threadsPerBlock - 1)/(2*threadsPerBlock), (N + threadsPerBlock - 1)/(4*threadsPerBlock), (N + threadsPerBlock - 1)/(4*threadsPerBlock) ); // (numElements + threadsPerBlock - 1) / threadsPerBlock
+  
+  dim3 dimGrid( (N + threadsPerBlock - 1)/threadsPerBlock, 1, 1 ); // (numElements + threadsPerBlock - 1) / threadsPerBlock
+  
   cudaGauss_1d<<<dimGrid,dimBlock>>>(data_dev, N);
   HANDLE_ERROR( cudaGetLastError() );
+  cudaDeviceSynchronize();
   
+  printf("kernel done\n");
   
   HANDLE_ERROR( cudaMemcpy(data_host, data_dev, N*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost) );
   HANDLE_ERROR( cudaDeviceSynchronize() );
   
-  if (N < 65536) {
-  for (uint16_t ii = 0; ii < N; ii++) {
+  
+  //if (N < 65536) {
+  for (uint64_t ii = 0; ii < N; ii++) {
     fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
   }
-  }
+  //}
   
   cufftHandle plan_forward;
   CUDATIMEIT_START;
@@ -108,14 +123,16 @@ void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
   HANDLE_ERROR( cudaMemcpy(data_host, data_dev, N*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost) );
   HANDLE_ERROR( cudaDeviceSynchronize() );
   
-  for (uint16_t ii = 0; ii < N; ii++) {
+  for (uint64_t ii = 0; ii < N; ii++) {
     fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
   }
+  
+  printf("cufft result saved\n");
   
   // inplace
   CUDATIMEIT_START;
   if (cufftExecZ2Z(plan_forward, data_dev, data_dev, CUFFT_INVERSE) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: ExecZ2Z Forward failed!\n");
+    fprintf(stderr, "CUFFT error: ExecZ2Z Backward failed!\n");
     exit( EXIT_FAILURE );
   }
   CUDATIMEIT_STOP;
@@ -124,14 +141,16 @@ void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
   HANDLE_ERROR( cudaMemcpy(data_host, data_dev, N*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost) );
   HANDLE_ERROR( cudaDeviceSynchronize() );
   
-  for (uint16_t ii = 0; ii < N; ii++) {
+  for (uint64_t ii = 0; ii < N; ii++) {
     fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
   }
   
+  printf("inv cufft result saved\n");
   
   //  cleaning up the mesh
   HANDLE_ERROR( cudaFree(data_dev) );
   HANDLE_ERROR( cudaFreeHost(data_host) );
+  HANDLE_ERROR( cudaDeviceSynchronize() );
   
 }
 

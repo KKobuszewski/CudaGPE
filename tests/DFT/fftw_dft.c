@@ -82,7 +82,7 @@ void perform_fftw3_1d(const uint64_t N, FILE** array_timing) {
   TIMEIT_END(clock_t execute_forward_t);
   fwrite_timeit(execute_forward_t,array_timing[0]);
   
-  for (uint16_t ii = 0; ii < N; ii++) {
+  for (uint64_t ii = 0; ii < N; ii++) {
     fwrite(data_forward_1d+ii, sizeof(fftw_complex),1,file1d);
   }
   
@@ -92,7 +92,7 @@ void perform_fftw3_1d(const uint64_t N, FILE** array_timing) {
   TIMEIT_END(clock_t execute_in_place_t);
   fwrite_timeit(execute_in_place_t,array_timing[1]);
   
-  for (uint16_t ii = 0; ii < N; ii++) {
+  for (uint64_t ii = 0; ii < N; ii++) {
     fwrite(data_in_1d+ii, sizeof(fftw_complex),1,file1d);
   }
   
@@ -101,7 +101,7 @@ void perform_fftw3_1d(const uint64_t N, FILE** array_timing) {
   fftw_execute(plan_backward);
   TIMEIT_END(clock_t execute_backward_t);
   fwrite_timeit(execute_backward_t,array_timing[2]);
-  for (uint16_t ii = 0; ii < N; ii++) {
+  for (uint64_t ii = 0; ii < N; ii++) {
     fwrite(data_backward_1d+ii, sizeof(fftw_complex),1,file1d);
   }
   

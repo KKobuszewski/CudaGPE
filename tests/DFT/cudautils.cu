@@ -17,7 +17,7 @@ double print_cudatimeit(const char* message) {
 double fprint_cudatimeit(FILE* file) {
   float computationTime;
   cudaEventElapsedTime(&computationTime, start_t, stop_t);
-  fwrite(&computationTime, (size_t) sizeof(double), 1, file);
+  fwrite(&computationTime, (size_t) sizeof(float), 1, file);
   return (double) computationTime;
 }
 

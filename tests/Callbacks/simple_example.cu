@@ -22,6 +22,7 @@
  */
 
 /* CALLBACK TYPES
+
 typedef enum cufftXtCallbackType_t {
     CUFFT_CB_LD_COMPLEX = 0x0,
     CUFFT_CB_LD_COMPLEX_DOUBLE = 0x1,

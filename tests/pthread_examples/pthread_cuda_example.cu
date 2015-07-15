@@ -3,7 +3,7 @@
 #include <cuda.h>
 
 /*
- * nvcc -o pthread_cuda pthread_cuda_example.cu -lpthread
+ * nvcc --default-stream per-thread -o pthread_cuda pthread_cuda_example.cu -lpthread
  * 
  */
 
@@ -21,7 +21,9 @@ __global__ void kernel(float *x, int n)
 void *launch_kernel(void *dummy)
 {
     float *data;
+    float *data_host;
     cudaMalloc(&data, N * sizeof(float));
+    cudaHostAlloc((void**) &data_host, N * sizeof(float), cudaHostAllocDefault);
 
     kernel<<<1, 64>>>(data, N);
 

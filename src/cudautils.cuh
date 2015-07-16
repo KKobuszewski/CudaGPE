@@ -3,6 +3,7 @@
 
 //#include <stdio.h>
 //#include <cuda.h>
+#include <cufft.h>
 
 /*
  * This header contains definitions of functions and macros for handling operational requirements.
@@ -20,7 +21,7 @@
 // macros
 
 // !!! these macros need cudaEvent_t start, stop; to be defined globally!!!
-// UWAGA TO DZIALA TYLKO NA DEFAULT STREAM!!! <- do niczego / nauczyc sie nvpp
+// UWAGA TO DZIALA TYLKO NA DEFAULT STREAM!!! <- do niczego / nauczyc sie nvvp/nvprof
 #define CUDATIMEIT_START \
 			  cudaEventCreate(&start_t); \
 			  cudaEventCreate(&stop_t); \
@@ -44,7 +45,7 @@ double fprint_cudatimeit(FILE* file);
 
 
 // handling errors in simple way
-static void HandleError( cudaError_t err,
+static inline void HandleError( cudaError_t err,
                          const char *file,
                          int line ) {
     if (err != cudaSuccess) {
@@ -61,11 +62,19 @@ static void HandleError( cudaError_t err,
                             printf( "Host memory failed in %s at line %d\n", \
                                     __FILE__, __LINE__ ); \
                             exit( EXIT_FAILURE );}}
-  
-  
 
 
 
+static void CheckCufft( cufftResult cufft_res,
+                         const char *file,
+                         int line ) {
+    if (cufft_res != CUFFT_SUCCESS) {
+        printf( "CUFFT error in %s at line %d\n", file, line );
+        exit( EXIT_FAILURE );
+    }
+} 
+
+#define CHECK_CUFFT( cufft_res ) (CheckCufft(cufft_res, __FILE__, __LINE__)) 
 
 
 #endif

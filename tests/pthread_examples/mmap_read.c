@@ -5,16 +5,22 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <complex.h>
+#include <stdint.h>
 
 #define FILEPATH "/tmp/mmapped.bin"
-#define NUMINTS  (1000)
-#define FILESIZE (NUMINTS * sizeof(int))
+#define NUMINTS  (1<<26)
+#define FILESIZE (NUMINTS * sizeof(double complex))
 
 int main(int argc, char *argv[])
 {
-    int i;
+    uint64_t i;
     int fd;
-    int *map;  /* mmapped array of int's */
+    double complex *map;  /* mmapped array of int's */
+    
+    printf("PROT_READ: %d\n", PROT_READ );
+    printf("PROT_WRITE: %d\n", PROT_WRITE );
+    printf("PROT_READ | PROT_WRITE: %d\n", PROT_READ | PROT_WRITE );
 
     fd = open(FILEPATH, O_RDONLY);
     if (fd == -1) {
@@ -22,17 +28,19 @@ int main(int argc, char *argv[])
 	exit(EXIT_FAILURE);
     }
 
-    map = mmap(0, FILESIZE, PROT_READ, MAP_SHARED, fd, 0);
+    map = (double complex*) mmap(0, FILESIZE, PROT_READ, MAP_SHARED, fd, 0);
     if (map == MAP_FAILED) {
 	close(fd);
 	perror("Error mmapping the file");
 	exit(EXIT_FAILURE);
     }
     
-    /* Read the file int-by-int from the mmap
+    /* 
+     * Read the file int-by-int from the mmap
      */
-    for (i = 1; i <=NUMINTS; ++i) {
-	printf("%d: %d\n", i, map[i]);
+    for (i = 0; i <NUMINTS; ++i) {
+      if (map[i] != 2 * i + I)
+	printf("%lu: %lf + %lfj\n", i, creal(map[i]), cimag(map[i]));
     }
 
     if (munmap(map, FILESIZE) == -1) {

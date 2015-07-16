@@ -1,9 +1,25 @@
 #ifndef __GLOBAL_H__
 #define __GLOBAL_H__
 
+
+#include <cuda_runtime.h>
+
+#include <stdint.h>
+#include <complex.h>
+#include <cuComplex.h>
+
+// simulation parameters
+#define NX ( (uint32_t) 1024 ) // type should be large enough to collect NX*NY*NZ
+#define NY ( (uint32_t) 64 )
+#define NZ ( (uint32_t) 64 )
+#define DIM 1
+#define REAL_TIME -1
+#define IMAG_TIME -COMPLEX_I
+
+
 typedef void* (*Array_of_thrd_functions[])(void*);
 
-typedef struct GlobalSettings {
+typedef struct Globals {
   
   cudaStream_t* streams;
   pthread_barrier_t* barrier;
@@ -12,8 +28,12 @@ typedef struct GlobalSettings {
   char** filenames;
   FILE** files;
   
+  // memory maps
+  double complex* init_wf_map; // map
+  int init_wf_fd; // file descriptor
+  
   // data structures on host
-  double complex* psi_host;
+  double complex* wf_host;
   double statistics_host;
   // cross sections on host??
   
@@ -27,15 +47,17 @@ typedef struct GlobalSettings {
   
   // cross sections on device
   
-} GlobalSettings;
+} Globals;
 
-extern GlobalSettings* global_stuff;
-extern pthread_barrier_t barrier;
+extern Globals* global_stuff;
+extern pthread_barrier_t barrier;// <- this barrier synchronizes only local threads that manage algorith and device
 extern pthread_barrier_t barrier_global;
 
 // names
 enum thread_id {SIMULATION_THRD, HELPER_THRD}; // enums in header!
-enum stream_id {KERNEL_STREAM, MEMORY_STREAM};
+enum stream_id {SIMULATION_STREAM, HELPER_STREAM};
+
+enum plan_id {FORWARD_PSI, BACKWARD_PSI, FORWARD_DIPOLAR, BACKWARD_DIPOLAR};
 
 
 

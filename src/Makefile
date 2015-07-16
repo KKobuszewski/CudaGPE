@@ -6,7 +6,7 @@ CLIBS     = -lfftw3 -lm -lpthread
 
 NVCC      = /usr/local/cuda-7.0/bin/nvcc
 LD        = $(NVCC)
-NVCCPARMS += -g -G -Xptxas="-v" -m64
+NVCCPARMS += -g -G -Xptxas="-v" -m64 -D DEBUG
 #-O3 -use_fast_math
 # -arch sm_?? <- byc moze potrzeba zeby dobrze double liczyl
 CUINCL    = -I /usr/local/cuda-7.0/include -I /usr/local/cuda/samples/common/inc
@@ -14,7 +14,7 @@ CULIBS    = -lcufft
 
 PROG=gpe
 
-OBJS =  main.o cudautils.o simulation.o
+OBJS =  main.o fileIO.o cudautils.o simulation.o kernels.o
 
 #c: main.c
 #	gcc -o $@ main.c $(CLIBS) $(CFLAGS)

@@ -1,16 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <complex.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <math.h>
 #include <pthread.h>
-#include <cuda_runtime.h>
-#include <cuComplex.h>
 
 #include "cudautils.h"
 #include "global.h"
 #include "simulation.h"
+#include "fileIO.h"
 
-#define N 67108864
+//#define N 67108864
 
 
 // sturctures definitions
@@ -21,21 +24,18 @@
 
 
 
-// global variables
-GlobalSettings* global_stuff;
+// global variables declarations
+Globals* global_stuff;
 const char* thread_names[] = {"SIMULATION_THRD","HELPER_THRD"};
-const char* stream_names[] = {"SIMULATION_STREAM","MEMORY_STREAM"};
+const char* stream_names[] = {"SIMULATION_STREAM","HELPER_STREAM"};
 
 
 // set parameters - przepisac czesciowo na makra
 const uint8_t num_streams = 2;
 const uint8_t num_threads = 2; // except main thread
-const uint8_t dim = 1;
-  
-const uint8_t filename_str_lenght = 128;
-  
+
+
 // threads
-pthread_barrier_t barrier;
 pthread_barrier_t barrier_global;
 pthread_attr_t attr;
 Array_of_thrd_functions thread_funcs = {simulation_thread, helper_thread};
@@ -46,9 +46,7 @@ cudaStream_t* streams;
 
 
 
-// functions' definitions
-FILE** open_files();
-void close_files(FILE** files, const uint8_t num_files);
+
 
 
 
@@ -74,36 +72,50 @@ int main(int argc, char* argv[]) {
   
   // clear and init device
   cudaDeviceReset(); // we want to be certain of proper behaviour of the device
-  cudaDeviceSynchronize();
+  //cudaDeviceSynchronize();
   // look for some goods solutions for initializing device
   
   
   // make stucture to pass all variables in program
-  global_stuff = (GlobalSettings*) malloc( (size_t) sizeof(GlobalSettings));
+  global_stuff = (Globals*) malloc( (size_t) sizeof(Globals));
   // fill with known information
+  global_stuff->init_wf_fd = -1;
+  
+  printf("\n");
+  printf("Simulation params: \n");
+  printf("dimensions: %u\n", DIM);
+  printf("lattice points in direction x: %u\n", NX);
+  printf("lattice points in direction y: %u\n", NY);
+  printf("lattice points in direction z: %u\n", NZ);
+  printf("total number of points in a lattice: %u, 2**%u\n", NX*NY*NZ, (uint32_t) ( log(NX*NY*NZ)/log(2) ) );
+  printf("\n");
   
   
   // parse command line args
-  printf("command line arguments:\n");
+  printf("%d command line arguments:\n", argc);
   for (int ii = 0; ii < argc; ii++) {
-    printf("%d. :\t%s\n", ii, argv[ii]);
+    printf("%d. :\t%s", ii, argv[ii]);
     
-    // 
+    // open file with wavefunction to be read
     if (ii == 1) {
-      //
+      printf("\tinitial wavefunction will be loaded from file %s", argv[ii]);
+      global_stuff->init_wf_fd = mmap_create(argv[ii],
+					     (void**) &(global_stuff->init_wf_map),
+					     NX*NY*NZ * sizeof(double complex),
+					     PROT_READ, MAP_SHARED);
+#ifdef DEBUG
+      printf("\n\t\t\t\tsample of mmaped initial wavefunction: %lf + %lfj\n", creal(global_stuff->init_wf_map[1000]), cimag(global_stuff->init_wf_map[1000]));
+#endif
     }
     // else if
-  }
-  
-  
-
     
-  
+    printf("\n");
+  }
   
   
   
   // create streams
-  streams = (cudaStream_t*) malloc( (size_t) sizeof(cudaStream_t)*num_streams);
+  streams = (cudaStream_t*) malloc( (size_t) sizeof(cudaStream_t)*num_streams );
   
   // create threads
   pthread_t* threads = (pthread_t*) malloc( (size_t) sizeof(pthread_t)*num_threads );
@@ -130,7 +142,6 @@ int main(int argc, char* argv[]) {
   
   
   
-  
   // run threads
   
   
@@ -138,7 +149,8 @@ int main(int argc, char* argv[]) {
   
   
   // join threads
-  for (uint8_t ii; ii < num_threads; ii++) {
+  pthread_barrier_wait (&barrier_global);
+  for (uint8_t ii = 0; ii < num_threads; ii++) {
     void* status;
     pthread_join(threads[ii], &status);
   }
@@ -149,53 +161,20 @@ int main(int argc, char* argv[]) {
   //if (backup_file) 	fclose(backup_file);
   //if (wf_file) 		fclose(wf_file);
   
-  // clear memory
   
+  // close files
+  mmap_destroy(global_stuff->init_wf_fd, global_stuff->init_wf_map, NX*NY*NZ * sizeof(double complex));
+  
+  // clear memory
+  free(streams);
+  free(threads);
+  
+  free(global_stuff);
+  
+  
+  printf("Main: program completed. Exiting...\n");
+  cudaThreadExit();
+  cudaDeviceReset();
   return EXIT_SUCCESS;
 }
-
-
-/*
- * In case to have transparent code - open files in special function and store pointers to the files in an array
- * PRZEMYSLEC ILE PLIKOW POTRZEBA -> WAVEFUNCTION, WCZYTYWANIE, BACKUP, ENERGIA, PRZEKROJE
- * CZYTAC/ZAPISYWAC WAVEFUNCTION DO PLIKOW BINARNYCH ZA POMOCA MMAP, A TIMING JAKOS INACZEJ (DO .TXT LUB nvprof UZYWAC)
- */
-FILE** open_files(const uint8_t num_files) {
-  
-  FILE** files = (FILE**) malloc(num_files);
-  //const uint8_t filename_str_lenght = 128;
-  
-  // move to creating files
-  char backup_filename[filename_str_lenght];
-  FILE* backup_file = NULL;
-  sprintf(backup_filename,"./backup_dim%d_N%d.txt",dim,N );
-  printf("backup save in: %s\n",backup_filename);
-  backup_file = fopen(backup_filename,"w");
-  if (!backup_file) printf("Error opening file %s!\n",backup_filename);
-  
-  files[0] = backup_file; // enum -> BACKUP_FILE
-  
-  
-  char wf_filename[filename_str_lenght];
-  FILE* wf_file = NULL;
-  
-  for (uint8_t ii=0; ii< num_files; ii++) {
-    //files[ii] = fopen / mmap
-    
-  }
-  
-  
-  return files;
-}
-
-/*
- * Closes files form array of pointers to files.
- * FILE** files - array of pointers to files
- *  const uint8_t num_files - number of files in the array
- */
-void close_files(FILE** files, const uint8_t num_files) {
-  for (uint8_t ii = 0; ii< num_files; ii++)
-    if (files[ii]) fclose(files[ii]);
-}
-
 

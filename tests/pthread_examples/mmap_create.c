@@ -5,17 +5,21 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <complex.h>
+#include <stdint.h>
 
 #define FILEPATH "/tmp/mmapped.bin"
-#define NUMINTS  (1000)
-#define FILESIZE (NUMINTS * sizeof(int))
+#define NUMINTS  (1<<26)
+#define FILESIZE (NUMINTS * sizeof(double complex))
 
 int main(int argc, char *argv[])
 {
-    int i;
+    uint64_t i;
     int fd;
     int result;
-    int *map;  /* mmapped array of int's */
+    double complex *map;  /* mmapped array of complex's */
+    
+    printf("page size: %lu\n", (size_t) sysconf (_SC_PAGESIZE));
 
     /* Open a file for writing.
      *  - Creating the file if it doesn't exist.
@@ -57,17 +61,20 @@ int main(int argc, char *argv[])
 
     /* Now the file is ready to be mmapped.
      */
-    map = mmap(0, FILESIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    map =  (double complex*) mmap(0, FILESIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (map == MAP_FAILED) {
 	close(fd);
 	perror("Error mmapping the file");
 	exit(EXIT_FAILURE);
     }
     
+    
+    printf("page size (after mmaping): %lu\n", (size_t) sysconf (_SC_PAGESIZE));
+    
     /* Now write int's to the file as if it were memory (an array of ints).
      */
-    for (i = 1; i <=NUMINTS; ++i) {
-	map[i] = 2 * i; 
+    for (i = 0; i <NUMINTS; ++i) {
+	map[i] = 2 * i + I; 
     }
 
     /* Don't forget to free the mmapped memory

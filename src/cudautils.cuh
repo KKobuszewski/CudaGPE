@@ -64,8 +64,12 @@ static inline void HandleError( cudaError_t err,
                             exit( EXIT_FAILURE );}}
 
 
-
-static void CheckCufft( cufftResult cufft_res,
+/* 
+ * This function enables simple handling of cufftResult (status of cufft-library operation)
+ * 
+ * DEVELOPE IT: if there is error, it should show what the error is !!!
+ */
+static inline void CheckCufft( cufftResult cufft_res,
                          const char *file,
                          int line ) {
     if (cufft_res != CUFFT_SUCCESS) {

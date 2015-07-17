@@ -10,6 +10,7 @@
 #include <cufftXt.h>
 
 #include "global.h"
+#include "kernels.cuh"
 
 
 // tests with callbacks
@@ -41,7 +42,21 @@ static __device__ cufftDoubleComplex cudaGauss_1d(void *dataIn,
 }
 
 
-
+__global__ void cudaGauss_1d(cufftDoubleComplex* data, const uint64_t N) {
+  // get the index of thread
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  // allocate constants in shared memory
+  const double x0 = (-5*SIGMA);
+  const double dx = (10*SIGMA)/((double) N);
+  
+  if (ii < N) {
+    data[ii] = make_cuDoubleComplex( INV_SQRT_2PI*exp(-(x0 + ii*dx)*(x0 + ii*dx)/2/SIGMA)/SIGMA, 0. );
+  }
+  
+  __syncthreads();
+  //printf("Kernel sie wykonuje\n");
+}
 
 
 

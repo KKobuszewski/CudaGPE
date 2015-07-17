@@ -41,7 +41,7 @@ pthread_attr_t attr;
 Array_of_thrd_functions thread_funcs = {simulation_thread, helper_thread};
 
 // cuda streams
-cudaStream_t* streams;
+//cudaStream_t* streams;
 
 
 
@@ -99,25 +99,27 @@ int main(int argc, char* argv[]) {
     // open file with wavefunction to be read
     if (ii == 1) {
       printf("\tinitial wavefunction will be loaded from file %s", argv[ii]);
-      global_stuff->init_wf_fd = mmap_create(argv[ii],
+      global_stuff->init_wf_fd = mmap_create(argv[ii],					// in fileIO.c
 					     (void**) &(global_stuff->init_wf_map),
 					     NX*NY*NZ * sizeof(double complex),
 					     PROT_READ, MAP_SHARED);
 #ifdef DEBUG
       printf("\n\t\t\t\tsample of mmaped initial wavefunction: %lf + %lfj\n", creal(global_stuff->init_wf_map[1000]), cimag(global_stuff->init_wf_map[1000]));
 #endif
+      
     }
-    // else if
+    // smth else ...
+    // else if (ii == 2) {
     
     printf("\n");
   }
   
   
   
-  // create streams
-  streams = (cudaStream_t*) malloc( (size_t) sizeof(cudaStream_t)*num_streams );
+  // create streams (CUDA)
+  global_stuff->streams = (cudaStream_t*) malloc( (size_t) sizeof(cudaStream_t)*num_streams );
   
-  // create threads
+  // create threads (POSIX)
   pthread_t* threads = (pthread_t*) malloc( (size_t) sizeof(pthread_t)*num_threads );
   pthread_attr_init(&attr); // attr is declared in global variables
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE); // threads will be managed by waiting for non-main threads to end
@@ -149,7 +151,7 @@ int main(int argc, char* argv[]) {
   
   
   // join threads
-  pthread_barrier_wait (&barrier_global);
+  pthread_barrier_wait (&barrier_global); //maybe not necessary
   for (uint8_t ii = 0; ii < num_threads; ii++) {
     void* status;
     pthread_join(threads[ii], &status);
@@ -166,9 +168,10 @@ int main(int argc, char* argv[]) {
   mmap_destroy(global_stuff->init_wf_fd, global_stuff->init_wf_map, NX*NY*NZ * sizeof(double complex));
   
   // clear memory
-  free(streams);
   free(threads);
   
+  
+  free(global_stuff->streams);
   free(global_stuff);
   
   

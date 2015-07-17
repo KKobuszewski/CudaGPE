@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <complex.h>
 #include <cuComplex.h>
+#include <cufft.h>
 
 // simulation parameters
 #define NX ( (uint32_t) 1024 ) // type should be large enough to collect NX*NY*NZ
@@ -23,6 +24,7 @@ typedef struct Globals {
   
   cudaStream_t* streams;
   pthread_barrier_t* barrier;
+  cufftHandle* plans;
   
   // files
   char** filenames;
@@ -52,6 +54,8 @@ typedef struct Globals {
 extern Globals* global_stuff;
 extern pthread_barrier_t barrier;// <- this barrier synchronizes only local threads that manage algorith and device
 extern pthread_barrier_t barrier_global;
+extern const uint8_t num_streams;
+const uint8_t num_plans = 4;
 
 // names
 enum thread_id {SIMULATION_THRD, HELPER_THRD}; // enums in header!

@@ -36,6 +36,7 @@ typedef struct Globals {
   // files
   char** filenames;
   FILE** files;
+  uint8_t num_files;
   
   // memory maps
   double complex* init_wf_map; // map

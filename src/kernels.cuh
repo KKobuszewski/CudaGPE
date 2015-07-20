@@ -11,7 +11,7 @@
  // these kernels have in arguments only array of complex numbers!
 __global__ void ker_gauss_1d(cufftDoubleComplex* data);
 __global__ void ker_normalize(cufftDoubleComplex* cufft_inverse_data);
-__global__ void ker_create_propagator_T(cuDoubleComplex* propagator_T_dev)
+__global__ void ker_create_propagator_T(cuDoubleComplex* propagator_T_dev);
 
 
 
@@ -20,8 +20,9 @@ __global__ void ker_create_propagator_T(cuDoubleComplex* propagator_T_dev)
  * 							KERNELS TYPE ZD									 *
  * 																	 *
  * ************************************************************************************************************************************* */
-// these kernels have in arguments only array of complex numbers and pointer to double data (scalar or array as well) <- on device we have probably only pointers, because we cannot handle device memory explicit
-ker_modulus_pow2_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_arr_dev);
+// these kernels have in arguments only array of complex numbers and pointer to double data (scalar or array as well)
+//<- on device we have probably only pointers, because we cannot handle device memory explicit
+__global__ void ker_modulus_pow2_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_arr_dev);
 __global__ void ker_arg_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_arr_dev);
 
 

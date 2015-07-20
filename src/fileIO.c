@@ -25,8 +25,8 @@ FILE** open_files() {
   
   FILE** files = (FILE**) malloc( num_files*sizeof(FILE*) );
   
-  char wf_filename[filename_str_lenght];
-  FILE* wf_file = NULL;
+  //char wf_filename[filename_str_lenght];
+  //FILE* wf_file = NULL;
   
   
   // file for backup - really necessary???
@@ -48,7 +48,7 @@ FILE** open_files() {
   init_file = fopen(init_filename,"w");
   if (!init_file) printf("Error opening file %s!\n",init_filename);
   
-  files[0] = init_filename;
+  files[0] = init_file;
   
   // file to save after FFT forward
   char FFT_filename[filename_str_lenght];
@@ -58,7 +58,7 @@ FILE** open_files() {
   FFT_file = fopen(FFT_filename,"w");
   if (!FFT_file) printf("Error opening file %s!\n",FFT_filename);
   
-  files[1] = FFT_filename;
+  files[1] = FFT_file;
   
   
   // file to save after IFFT back
@@ -69,7 +69,7 @@ FILE** open_files() {
   IFFT_file = fopen(IFFT_filename,"w");
   if (!IFFT_file) printf("Error opening file %s!\n",IFFT_filename);
   
-  files[2] = IFFT_filename;
+  files[2] = IFFT_file;
   
   /*
   for (uint8_t ii=0; ii< num_files; ii++) {

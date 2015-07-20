@@ -277,7 +277,7 @@ int main (){
   printf("blocks: %lu\n",(N + threadsPerBlock - 1)/threadsPerBlock);
   // filling with data
   kernel_normalize<<<dimGrid,dimBlock>>>(data_dev);
-  //HANDLE_ERROR( cudaGetLastError() );
+  HANDLE_ERROR( cudaGetLastError() );
 #endif
   
   // copy data

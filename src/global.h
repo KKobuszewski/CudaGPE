@@ -56,6 +56,25 @@ typedef struct Globals {
   
   // cross sections on device
   
+  
+  
+  //scalars on host
+  double mean_T_host;
+  double mean_Vdip_host;
+  double mean_Vext_host;
+  double mean_Vcon_host;
+  double norm_host;
+  
+  
+  
+  // scalars on device <- MOZE SKOPIOWAC TO NA DEVICE PRZEZ COPY FROM SYMBOL, BY BYLO LATWIEJ SIE TYM POSLUGIWAC ?!!!
+  double* mean_T_dev;
+  double* mean_Vdip_dev;
+  double* mean_Vext_dev;
+  double* mean_Vcon_dev;
+  double* norm_dev;
+  
+  
 } Globals;
 
 extern Globals* global_stuff;

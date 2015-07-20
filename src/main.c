@@ -38,7 +38,7 @@ const uint8_t num_threads = 2; // except main thread
 // threads
 pthread_barrier_t barrier_global;
 pthread_attr_t attr;
-Array_of_thrd_functions thread_funcs = {simulation_thread, helper_thread};
+Array_of_thrd_functions thread_funcs = {simulation_thread, helper_thread};// type Array_of_thrd_functions is defined in global.h
 
 // cuda streams
 //cudaStream_t* streams;

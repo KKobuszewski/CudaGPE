@@ -113,6 +113,12 @@ void* simulation_thread(void* passing_ptr) {
        
        // multiply by T propagator (do in callback) <- ALE KTORY store od FORWARD czy load od INVERSE
        
+#ifdef DEBUG
+       // saving after fft
+       for (uint64_t ii; ii < NX*NY*NZ; ii++)
+         fprintf( (global_stuff->files)[1], "%lf\t%lf\t%lf",);
+#endif
+       
        // go back to 'positions`'? space <- JAK JEST PO ANGIELSKU PRZESTRZEN POLOZEN ???
        CHECK_CUFFT( cufftExecZ2Z((global_stuff->plans)[BACKWARD_PSI],
 				 global_stuff->complex_arr2_dev,
@@ -120,7 +126,7 @@ void* simulation_thread(void* passing_ptr) {
 				 CUFFT_INVERSE) );
        
        
-       
+       /*
        // count DFT of modulus of wavefunction (in positions` space)
        CHECK_CUFFT( cufftExecD2Z((global_stuff->plans)[FORWARD_DIPOLAR],
 				 global_stuff->double_arr1_dev,
@@ -136,7 +142,7 @@ void* simulation_thread(void* passing_ptr) {
        // normalize (in callback store
        
        // create propagator of Vdip (in)
-       
+       */
        
        FLAG_RUN_SIMULATION = false;
        

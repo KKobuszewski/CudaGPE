@@ -21,7 +21,7 @@ const uint8_t filename_str_lenght = 128;
  */
 FILE** open_files() {
   
-  const uint8_t num_files = 3;
+  const uint8_t num_files = 4;
   
   FILE** files = (FILE**) malloc( num_files*sizeof(FILE*) );
   
@@ -29,7 +29,7 @@ FILE** open_files() {
   FILE* wf_file = NULL;
   
   
-  // move to creating files
+  // file for backup - really necessary???
   char backup_filename[filename_str_lenght];
   FILE* backup_file = NULL;
   sprintf(backup_filename,"./backup_dim%d_N%d.txt", DIM, NX*NY*NZ);
@@ -37,15 +37,51 @@ FILE** open_files() {
   backup_file = fopen(backup_filename,"w");
   if (!backup_file) printf("Error opening file %s!\n",backup_filename);
   
-  files[2] = backup_file; // enum -> BACKUP_FILE
+  files[num_files-1] = backup_file; // enum -> BACKUP_FILE
   
   
+  // file to save before FFT
+  char init_filename[filename_str_lenght];
+  FILE* init_file = NULL;
+  sprintf(init_filename,"./init_dim%d_N%d.txt", DIM, NX*NY*NZ);
+  printf("init wf save in: %s\n",init_filename);
+  init_file = fopen(init_filename,"w");
+  if (!init_file) printf("Error opening file %s!\n",init_filename);
   
+  files[0] = init_filename;
+  
+  // file to save after FFT forward
+  char FFT_filename[filename_str_lenght];
+  FILE* FFT_file = NULL;
+  sprintf(FFT_filename,"./FFT_dim%d_N%d.txt", DIM, NX*NY*NZ);
+  printf("FFT wf save in: %s\n",FFT_filename);
+  FFT_file = fopen(FFT_filename,"w");
+  if (!FFT_file) printf("Error opening file %s!\n",FFT_filename);
+  
+  files[1] = FFT_filename;
+  
+  
+  // file to save after IFFT back
+  char IFFT_filename[filename_str_lenght];
+  FILE* IFFT_file = NULL;
+  sprintf(IFFT_filename,"./IFFT_dim%d_N%d.txt", DIM, NX*NY*NZ);
+  printf("IFFT wf save in: %s\n",IFFT_filename);
+  IFFT_file = fopen(IFFT_filename,"w");
+  if (!IFFT_file) printf("Error opening file %s!\n",IFFT_filename);
+  
+  files[2] = IFFT_filename;
+  
+  /*
   for (uint8_t ii=0; ii< num_files; ii++) {
     //files[ii] = fopen / mmap
     
   }
+  */
   
+  
+  // linking with struct for global variables <- wlasciwie to tylko komplikuje, ale chociaz wiadomo co jest global, a co nie ...
+  global_stuff->files = files;
+  global_stuff->num_files = num_files;
   
   return files;
 }

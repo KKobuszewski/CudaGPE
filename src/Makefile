@@ -6,9 +6,9 @@ CLIBS     = -lfftw3 -lm -lpthread
 
 NVCC      = /usr/local/cuda-7.0/bin/nvcc
 LD        = $(NVCC)
-NVCCPARMS += -g -G -Xptxas="-v" -m64 -D DEBUG
+NVCCPARMS += -g -G -Xptxas="-v" -arch=sm_52 -m64 -D DEBUG
 #-O3 -use_fast_math
-# -arch sm_?? <- byc moze potrzeba zeby dobrze double liczyl
+# -arch sm_52 <- byc moze potrzeba zeby dobrze double liczyl
 CUINCL    = -I /usr/local/cuda-7.0/include -I /usr/local/cuda/samples/common/inc
 CULIBS    = -lcufft 
 

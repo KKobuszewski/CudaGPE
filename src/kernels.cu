@@ -88,8 +88,9 @@ __global__ void ker_normalize(cufftDoubleComplex* cufft_inverse_data) {
   
   // in both kernel as well as callback we use predefined N to have comparable performance results
   
-  if (ii < NX*NY*NZ) {
+  while (ii < NX*NY*NZ) {
     cufft_inverse_data[ii] = make_cuDoubleComplex( cuCreal(cufft_inverse_data[ii])/((double) N), cuCimag(cufft_inverse_data[ii])/((double) N) );
+    ii += blockDim.x * gridDim.x;
   }
 }
 
@@ -152,9 +153,37 @@ __global__ void ker_arg_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_a
   
 }
 
+/* 
+ * TEN KERNEL POWINIEN BYC JESZCZE UDOSKONALONY JAK KAZDY Z RESZTA
+ * NA RAZIE MOZNA ZASTAPIC CUBLAS: cublasStatus_t cublasDznrm2(cublasHandle_t handle, int n,const cuDoubleComplex *x, int incx, double *result)
+ * http://docs.nvidia.com/cuda/cublas/#cublas-lt-t-gt-nrm2
+ */
 __global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* norm_dev) {
+  extern __shared__ double shared_mods[]; // CZY TO SIE ZMIESCI W SHARED MEMORY ???
+  
+  uint16_t tid = threadIdx.x;
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
+  // load |psi|^2(x) to shared memory
+  //shared_mods[tid] = cuCreal(complex_arr_dev[ii])*cuCreal(complex_arr_dev[ii]) + cuCimag(complex_arr_dev[ii])*cuCimag(complex_arr_dev[ii]);
+  shared_mods = cuCSqAbs(complex_arr_dev[ii]) + cuCSqAbs(complex_arr_dev[ii + blockDim.x]); // blockDim.x MUSI BYC ODPOWIEDNIEJ DLUGOSCI
+  __syncthreads();
+  
+  // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
+  for (uint32_t s=blockDim.x/2; s > 0; s>>=1) {
+    // sequential addressing in shared memory
+    if (tid < s) {
+      shared_mods[tid] += shared_mods[tid+s];
+    }
+    
+    __syncthreads();
+  }
+  
+  // add results to variable in global memory <- CZY W TEN SPOSOB TO NIE BEDZIE POWODOWAC BLEDOW ???
+  if (tid==0) *norm_dev += shared_mods[0];
+  
+  __syncthreads();
+  if (ii = 0) *norm_dev *= DX;
   
 }
 

@@ -11,10 +11,16 @@
  
  
  __host__ __device__ static __inline__ cuDoubleComplex cuCexp(cuDoubleComplex x)
- {
+{
     double factor = exp(x.x);
     return make_cuDoubleComplex(factor * cos(x.y), factor * sin(x.y));
- }
+}
+
+__host__ __device__ static inline double cuCSqAbs(cuDoubleComplex z)
+{
+    return 
+}
+
 
 __host__ __device__ static __inline__ double cuCnorm(cuDoubleComplex a, cuDoubleComplex b, cuDoubleComplex c)
 {

@@ -78,27 +78,27 @@ void perform_fftw3_1d(const uint64_t N, FILE** array_timing) {
   
   // make dft forward with two arrays
   TIMEIT_START;
-  fftw_execute(plan_forward);
+  for (int jj=0; jj < 1000; jj++)  fftw_execute(plan_forward);
   TIMEIT_END(clock_t execute_forward_t);
   fwrite_timeit(execute_forward_t,array_timing[0]);
   
-  for (uint64_t ii = 0; ii < N; ii++) {
-    fwrite(data_forward_1d+ii, sizeof(fftw_complex),1,file1d);
-  }
+//   for (uint64_t ii = 0; ii < N; ii++) {
+//     fwrite(data_forward_1d+ii, sizeof(fftw_complex),1,file1d);
+//   }
   
   //make dft forward in place
   TIMEIT_START;
-  fftw_execute(plan_in_place);
+  for (int jj=0; jj < 1000; jj++) fftw_execute(plan_in_place);
   TIMEIT_END(clock_t execute_in_place_t);
   fwrite_timeit(execute_in_place_t,array_timing[1]);
   
-  for (uint64_t ii = 0; ii < N; ii++) {
-    fwrite(data_in_1d+ii, sizeof(fftw_complex),1,file1d);
-  }
+//   for (uint64_t ii = 0; ii < N; ii++) {
+//     fwrite(data_in_1d+ii, sizeof(fftw_complex),1,file1d);
+//   }
   
   //make dft data_backward_1d
   TIMEIT_START;
-  fftw_execute(plan_backward);
+  for (int jj=0; jj < 1000; jj++) fftw_execute(plan_backward);
   TIMEIT_END(clock_t execute_backward_t);
   fwrite_timeit(execute_backward_t,array_timing[2]);
   for (uint64_t ii = 0; ii < N; ii++) {

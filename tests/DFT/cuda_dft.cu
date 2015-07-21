@@ -63,6 +63,7 @@ void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
   printf("sizeof(cufftDoubleComplex): %lu\n", sizeof(cufftDoubleComplex));
   printf("memory: %lu kB\n", sizeof(cufftDoubleComplex)*N/1024);
   HANDLE_ERROR( cudaMalloc((void**) &data_dev, sizeof(cufftDoubleComplex)*N) );
+  HANDLE_ERROR( cudaMalloc((void**) &data2_dev, sizeof(cufftDoubleComplex)*N) );
   cudaDeviceSynchronize();
   //if (N < 65536) {
     HANDLE_ERROR( cudaHostAlloc((void**) &data_host, sizeof(cufftDoubleComplex)*N, cudaHostAllocDefault) ); // when to use pinned memory: http://www.cs.virginia.edu/~mwb7w/cuda_support/pinned_tradeoff.html
@@ -112,10 +113,22 @@ void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
   
   // inplace
   CUDATIMEIT_START;
-  if (cufftExecZ2Z(plan_forward, data_dev, data_dev, CUFFT_FORWARD) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: ExecZ2Z Forward failed!\n");
-    exit( EXIT_FAILURE );
-  }
+  for (int jj=0; jj < 1000; jj++) cufftExecZ2Z(plan_forward, data_dev, data2_dev, CUFFT_FORWARD);
+  //if (cufftExecZ2Z(plan_forward, data_dev, data_dev, CUFFT_FORWARD) != CUFFT_SUCCESS){
+  //  fprintf(stderr, "CUFFT error: ExecZ2Z Forward failed!\n");
+  //  exit( EXIT_FAILURE );
+  //}
+  CUDATIMEIT_STOP;
+  fprint_cudatimeit(array_timing[0]);
+  
+  
+  // inplace
+  CUDATIMEIT_START;
+  for (int jj=0; jj < 1000; jj++) cufftExecZ2Z(plan_forward, data_dev, data_dev, CUFFT_FORWARD);
+  //if (cufftExecZ2Z(plan_forward, data_dev, data_dev, CUFFT_FORWARD) != CUFFT_SUCCESS){
+  //  fprintf(stderr, "CUFFT error: ExecZ2Z Forward failed!\n");
+  //  exit( EXIT_FAILURE );
+  //}
   CUDATIMEIT_STOP;
   fprint_cudatimeit(array_timing[1]);
   
@@ -123,27 +136,28 @@ void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
   HANDLE_ERROR( cudaMemcpy(data_host, data_dev, N*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost) );
   HANDLE_ERROR( cudaDeviceSynchronize() );
   
-  for (uint64_t ii = 0; ii < N; ii++) {
-    fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
-  }
+//   for (uint64_t ii = 0; ii < N; ii++) {
+//     fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
+//   }
   
   printf("cufft result saved\n");
   
-  // inplace
+  // inplace back
   CUDATIMEIT_START;
-  if (cufftExecZ2Z(plan_forward, data_dev, data_dev, CUFFT_INVERSE) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: ExecZ2Z Backward failed!\n");
-    exit( EXIT_FAILURE );
-  }
+  for (int jj=0; jj < 1000; jj++) cufftExecZ2Z(plan_forward, data_dev, data2_dev, CUFFT_INVERSE);  
+//   if (cufftExecZ2Z(plan_forward, data_dev, data_dev, CUFFT_INVERSE) != CUFFT_SUCCESS){
+//     fprintf(stderr, "CUFFT error: ExecZ2Z Backward failed!\n");
+//     exit( EXIT_FAILURE );
+//   }
   CUDATIMEIT_STOP;
   fprint_cudatimeit(array_timing[2]);
   
   HANDLE_ERROR( cudaMemcpy(data_host, data_dev, N*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost) );
   HANDLE_ERROR( cudaDeviceSynchronize() );
   
-  for (uint64_t ii = 0; ii < N; ii++) {
-    fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
-  }
+//   for (uint64_t ii = 0; ii < N; ii++) {
+//     fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
+//   }
   
   printf("inv cufft result saved\n");
   

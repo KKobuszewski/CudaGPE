@@ -113,6 +113,7 @@ void* simulation_thread(void* passing_ptr) {
        
        // multiply by T propagator (do in callback) <- ALE KTORY store od FORWARD czy load od INVERSE
        call_kernel_ZZ_1d( ker_popagate_T, global_stuff->complex_arr2_dev, global_stuff->propagator_T_dev, (global_stuff->streams)[SIMULATION_STREAM] );
+       call_kernel_ZD_1d( ker_count_norm_wf_1d, global_stuff->complex_arr2_dev, global_stuff->norm_dev,  (global_stuff->streams)[SIMULATION_STREAM] );
        
 #ifdef DEBUG
        // saving after fft

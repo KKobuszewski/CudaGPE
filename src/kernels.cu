@@ -152,6 +152,11 @@ __global__ void ker_arg_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_a
   
 }
 
+__global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* norm_dev) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  
+}
 
 
 /* ************************************************************************************************************************************* *

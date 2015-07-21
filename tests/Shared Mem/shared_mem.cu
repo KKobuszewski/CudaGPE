@@ -7,8 +7,8 @@
 __global__ void staticReverse(cuDoubleComplex *d, int n)
 {
   __shared__ cuDoubleComplex s[64];
-  cuDoubleComplex t = make_cuDoubleComplex( (double)threadIdx.x, (double)(n-threadIdx.x-1) );
-  cuDoubleComplex tr = make_cuDoubleComplex( (double)(n-threadIdx.x-1), (double)threadIdx.x );
+  int t = threadIdx.x;
+  int tr = n-t-1;
   s[t] = d[t];
   __syncthreads();
   d[t] = s[tr];
@@ -17,8 +17,8 @@ __global__ void staticReverse(cuDoubleComplex *d, int n)
 __global__ void dynamicReverse(cuDoubleComplex *d, int n)
 {
   extern __shared__ cuDoubleComplex s[];
-  cuDoubleComplex t = make_cuDoubleComplex(threadIdx.x, n-threadIdx.x-1);
-  cuDoubleComplex tr = make_cuDoubleComplex(n-t-1, threadIdx);
+  int t = threadIdx.x;
+  int tr = n-t-1;
   s[t] = d[t];
   __syncthreads();
   d[t] = s[tr];

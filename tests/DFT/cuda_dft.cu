@@ -59,6 +59,7 @@ void perform_cufft_1d(const uint64_t N, FILE** array_timing) {
   
   // allocate memory
   cufftDoubleComplex *data_dev;
+  cufftDoubleComplex *data2_dev;
   cufftDoubleComplex *data_host;
   printf("sizeof(cufftDoubleComplex): %lu\n", sizeof(cufftDoubleComplex));
   printf("memory: %lu kB\n", sizeof(cufftDoubleComplex)*N/1024);

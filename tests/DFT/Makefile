@@ -5,7 +5,7 @@ CFLAGS    = -std=c99 -Wall -I /usr/local/cuda/include -march=native -O3 -msse2 -
 CLIBS     = -lfftw3 -lm
 CULIBS      = -lcufft
 
-NVCCPARMS += -g -G -Xptxas="-v" -I /usr/local/cuda-7.0/include
+NVCCPARMS += -g -G -Xptxas="-v" -arch=sm_52 -I /usr/local/cuda-7.0/include
 #-O3 -use_fast_math
 # -arch sm_13 <- byc moze potrzeba zeby dobrze double liczyl 
 

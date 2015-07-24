@@ -21,7 +21,7 @@ const uint8_t filename_str_lenght = 128;
  */
 FILE** open_files() {
   
-  const uint8_t num_files = 5;
+  const uint8_t num_files = 6;
   
   FILE** files = (FILE**) malloc( num_files*sizeof(FILE*) );
   
@@ -71,15 +71,27 @@ FILE** open_files() {
   
   files[2] = IFFT_file;
   
-  // file to save after IFFT back
+  // file to save stats of system
   char stats_filename[filename_str_lenght];
-  FILE* stats_filename = NULL;
+  FILE* stats_file = NULL;
   sprintf(stats_filename,"./stats_filename%d_N%d.txt", DIM, NX*NY*NZ);
-  printf("stats wf save in: %s\n",IFFT_filename);
+  printf("stats wf save in: %s\n",stats_filename);
   stats_file = fopen(stats_filename,"w");
   if (!stats_file) printf("Error opening file %s!\n",stats_filename);
   
-  files[3] = stats_filename;
+  files[3] = stats_file;
+  
+  // file to save propagator T
+  char T_filename[filename_str_lenght];
+  FILE* T_file = NULL;
+  sprintf(T_filename,"./T_filename%d_N%d.txt", DIM, NX*NY*NZ);
+  printf("stats wf save in: %s\n",T_filename);
+  T_file = fopen(T_filename,"w");
+  if (!T_file) printf("Error opening file %s!\n",T_filename);
+  
+  files[4] = T_file;
+  
+  
   
   /*
   for (uint8_t ii=0; ii< num_files; ii++) {

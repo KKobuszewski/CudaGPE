@@ -15,10 +15,10 @@
 
 
 // tests with callbacks
-#define M_2PI (6.283185307179586)
-#define SQRT_2PI (2.5066282746310002)
-#define INV_SQRT_2PI (0.3989422804014327)
-#define SIGMA (1)
+#define M_2PI ((double) 6.283185307179586)
+#define SQRT_2PI ((double) 2.5066282746310002)
+#define INV_SQRT_2PI ((double) 0.3989422804014327)
+#define SIGMA ((double) 1.)
 
 
 /* ************************************************************************************************************************************* *
@@ -46,7 +46,7 @@ static __device__ cufftDoubleComplex cufftGauss_1d(void *dataIn,
   // allocate constants in shared memory <- how to do that???
   const double x0 = (-5*SIGMA);
   const double dx = (10*SIGMA)/((double) NX*NY*NZ);
-  return make_cuDoubleComplex( INV_SQRT_2PI*exp(-(x0 + offset*dx)*(x0 + offset*dx)/2/SIGMA)/SIGMA, 0. );
+  return make_cuDoubleComplex( sqrt(INV_SQRT_2PI/SIGMA)*exp(-(x0 + offset*dx)*(x0 + offset*dx)/4/(SIGMA*SIGMA)), 0. );
 }
 
 
@@ -64,11 +64,11 @@ __global__ void ker_gauss_1d(cuDoubleComplex* data) {
   const uint64_t N = NX*NY*NZ;
   
   // allocate constants in shared memory
-  const double x0 = (-5*SIGMA);
-  const double dx = (10*SIGMA)/((double) N);
+  //const double x0 = (-5*SIGMA);
+  //const double dx = (10*SIGMA)/((double) N);
   
   if (ii < N) {
-    data[ii] = make_cuDoubleComplex( INV_SQRT_2PI*exp(-(x0 + ii*dx)*(x0 + ii*dx)/2/SIGMA)/SIGMA, 0. );
+    data[ii] = make_cuDoubleComplex( sqrt(INV_SQRT_2PI/SIGMA)*exp(-(XMIN + ii*DX)*(XMIN + ii*DX)/4/(SIGMA*SIGMA)), 0. );
   }
   
   __syncthreads();
@@ -83,13 +83,13 @@ __global__ void ker_gauss_1d(cuDoubleComplex* data) {
  * NOTE: cufftDoubleComplex is just typdef for cuDoubleComplex ! (no need to include <cuComplex.h> if only cufft necessary)
  * 	 here used to associate it with inverse cufft
  */
-__global__ void ker_normalize(cufftDoubleComplex* cufft_inverse_data) {
+__global__ void ker_normalize_1d(cufftDoubleComplex* cufft_inverse_data) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
   // in both kernel as well as callback we use predefined N to have comparable performance results
   
-  while (ii < NX*NY*NZ) {
-    cufft_inverse_data[ii] = make_cuDoubleComplex( cuCreal(cufft_inverse_data[ii])/((double) N), cuCimag(cufft_inverse_data[ii])/((double) N) );
+  while (ii < NX) {
+    cufft_inverse_data[ii] = make_cuDoubleComplex( cuCreal(cufft_inverse_data[ii])/((double) NX), cuCimag(cufft_inverse_data[ii])/((double) NX) );
     ii += blockDim.x * gridDim.x;
   }
 }
@@ -105,6 +105,11 @@ __global__ void ker_create_propagator_T(cuDoubleComplex* propagator_T_dev) {
     // range [0, KMAX]
     const double kx_ii = DKx*ii;
     propagator_T_dev[ii] = make_cuDoubleComplex( cos(kx_ii*kx_ii*DT/2),-sin(kx_ii*kx_ii*DT/2)  ); // array of constants e^(-I*k^2/2*dt) = cos( -kx^2/2dt ) + I*sin( kx^2/2dt ) = cos( +kx^2/2dt ) - I*sin( +kx^2/2dt )
+    
+    // make sure that tramsform will be unitary
+    /*propagator_T_dev[ii] = make_cuDoubleComplex( cuCreal(propagator_T_dev[ii]) / cuCabs(propagator_T_dev[ii]),
+						 cuCimag(propagator_T_dev[ii]) / cuCabs(propagator_T_dev[ii]) );*/
+    
   }
   else if (ii < NX*NY*NZ) {
     // range [KMIN = -KMAX, -DK]
@@ -127,6 +132,17 @@ __global__ void ker_create_propagator_T(cuDoubleComplex* propagator_T_dev) {
 }
 
 
+__global__ void ker_print_Z(cuDoubleComplex* arr_dev)
+{
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  ii *= 32;
+  while (ii < NX) {
+    printf("%lu\t%.15f + %.15fj\t%.15f * exp( j*%.15f )\n", ii, cuCreal(arr_dev[ii]), cuCimag(arr_dev[ii]), cuCabs(arr_dev[ii]), cuCarg(arr_dev[ii]) );
+    ii += blockDim.x * gridDim.x;
+  }
+}
+
+
 /* ************************************************************************************************************************************* *
  * 																	 *
  * 							KERNELS TYPE ZD									 *
@@ -138,7 +154,7 @@ __global__ void ker_modulus_pow2_wf_1d(cuDoubleComplex* complex_arr_dev, double*
   
   if (ii < NX*NY*NZ) {
     //double_arr_dev = cuCabs(complex_arr_dev[ii])*cuCabs(complex_arr_dev[ii]);
-    double_arr_dev = cuCreal(complex_arr_dev[ii])*cuCreal(complex_arr_dev[ii]) + cuCimag(complex_arr_dev[ii])*cuCimag(complex_arr_dev[ii]);
+    double_arr_dev[ii] = cuCreal(complex_arr_dev[ii])*cuCreal(complex_arr_dev[ii]) + cuCimag(complex_arr_dev[ii])*cuCimag(complex_arr_dev[ii]);
   }
   
 }
@@ -148,7 +164,7 @@ __global__ void ker_arg_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_a
   
   if (ii < NX*NY*NZ) {
     //double_arr_dev[ii] = atan2( cuCimag(complex_arr_dev[ii]), cuCreal(complex_arr_dev[ii]) ); // in case line below doesn't work
-    double_arr_dev = cuCarg(complex_arr_dev[ii]); // this function is declared in cuda_complex_ext.cuh
+    double_arr_dev[ii] = cuCarg(complex_arr_dev[ii]); // this function is declared in cuda_complex_ext.cuh
   }
   
 }
@@ -166,7 +182,8 @@ __global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* n
   
   // load |psi|^2(x) to shared memory
   //shared_mods[tid] = cuCreal(complex_arr_dev[ii])*cuCreal(complex_arr_dev[ii]) + cuCimag(complex_arr_dev[ii])*cuCimag(complex_arr_dev[ii]);
-  shared_mods = cuCSqAbs(complex_arr_dev[ii]) + cuCSqAbs(complex_arr_dev[ii + blockDim.x]); // blockDim.x MUSI BYC ODPOWIEDNIEJ DLUGOSCI
+  if (ii < NX*NY*NZ)
+    shared_mods[ii] = cuCSqAbs(complex_arr_dev[ii]);// + cuCSqAbs(complex_arr_dev[ii + blockDim.x]); // blockDim.x MUSI BYC ODPOWIEDNIEJ DLUGOSCI
   __syncthreads();
   
   // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
@@ -183,7 +200,7 @@ __global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* n
   if (tid==0) *norm_dev += shared_mods[0];
   
   __syncthreads();
-  if (ii = 0) *norm_dev *= DX;
+  if (ii == 0) *norm_dev *= sqrt(DX);
   
 }
 
@@ -194,19 +211,16 @@ __global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* n
  * 																	 *
  * ************************************************************************************************************************************* */
 
-__global__ void ker_popagate_T(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* popagator_T_dev) {
+__global__ void ker_popagate_T(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* propagator_T_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
   if (ii < NX*NY*NZ) {
-    wf_momentum_dev[ii] *= propagator_T_dev[ii];
+    wf_momentum_dev[ii].x *= propagator_T_dev[ii].x;
+    wf_momentum_dev[ii].y *= propagator_T_dev[ii].y;
   }
 }
 
 
-
-
-// util functions
-//__global__ 
 
 
 // cross sections of wavefunction

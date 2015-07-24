@@ -16,7 +16,7 @@
 
 #ifdef CUDA
      #include <cufft.h>
-     #include <cutil.h>
+     #include "helper_cuda.h"
 #else
      #include <fftw3.h>
      const int N_THREADS = 4;
@@ -72,7 +72,7 @@
 
 #ifdef CUDA
 
-       CUT_DEVICE_INIT();
+       gpuDeviceInit(0);
 #endif
 
 #ifdef ONED

@@ -3,6 +3,7 @@
 
 //#include <stdio.h>
 //#include <cuda.h>
+#include <cublas_v2.h>
 #include <cufft.h>
 
 /*
@@ -80,5 +81,22 @@ static inline void CheckCufft( cufftResult cufft_res,
 
 #define CHECK_CUFFT( cufft_res ) (CheckCufft(cufft_res, __FILE__, __LINE__)) 
 
+
+
+/* 
+ * This function enables simple handling of cublasStatus_t (status of cublas-library operation)
+ * 
+ * DEVELOPE IT: if there is error, it should show what the error is !!!
+ */
+static inline void CheckCublas( cublasStatus_t status,
+                         const char *file,
+                         int line ) {
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        printf( "CUBLAS error in %s at line %d\n", file, line );
+        exit( EXIT_FAILURE );
+    }
+} 
+
+#define CHECK_CUBLAS( status ) (CheckCublas(status, __FILE__, __LINE__)) 
 
 #endif

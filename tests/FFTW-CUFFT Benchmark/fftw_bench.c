@@ -13,10 +13,12 @@
      #include <stdlib.h>
      #include <stdio.h>
      #include <math.h>
+     #include "omp.h"
 
 #ifdef CUDA
      #include <cufft.h>
-     #include <cutil.h>
+     //#include <cutil.h>
+     #include "helper_cuda.h"
 #else
      #include <fftw3.h>
      const int N_THREADS = 4;
@@ -58,8 +60,8 @@
          cufftHandle plan;
          cufftComplex *data, *datao, *devdata, *devdatao;
 #else
-         fftwf_complex *in, *out;
-         fftwf_plan p;
+         fftw_complex *in, *out;
+         fftw_plan p;
 #endif
          int i,k,n_el,n_test,nx;
 #ifdef TWOD
@@ -122,19 +124,19 @@
          n_el = nx*ny*nz; 
 #endif
 #endif
-
+       
 #ifdef CUDA
          size_t arraySize = sizeof(cufftComplex) * n_el;
          cudaMallocHost((void**) &data, arraySize);
          cudaMallocHost((void**) &datao, arraySize);
 #else
-         in = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * n_el);
-         out = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * n_el);
+         in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * n_el);
+         out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * n_el);
 #endif
 
 #ifdef THREADED
-         fftwf_init_threads();
-         fftwf_plan_with_nthreads(N_THREADS);
+         fftw_init_threads();
+         fftw_plan_with_nthreads(N_THREADS);
 #endif
 
 // start plan creation
@@ -155,15 +157,15 @@
 #ifdef ONED
 #ifdef INPLACE
 #ifdef FASTPLAN 
-         p = fftwf_plan_dft_1d(n_el, in, in, FFTW_FORWARD, FFTW_ESTIMATE);
+         p = fftw_plan_dft_1d(n_el, in, in, FFTW_FORWARD, FFTW_ESTIMATE);
 #else
-         p = fftwf_plan_dft_1d(n_el, in, in, FFTW_FORWARD, FFTW_MEASURE);
+         p = fftw_plan_dft_1d(n_el, in, in, FFTW_FORWARD, FFTW_MEASURE);
 #endif
 #else
 #ifdef FASTPLAN 
-         p = fftwf_plan_dft_1d(n_el, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+         p = fftw_plan_dft_1d(n_el, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
 #else
-         p = fftwf_plan_dft_1d(n_el, in, out, FFTW_FORWARD, FFTW_MEASURE);
+         p = fftw_plan_dft_1d(n_el, in, out, FFTW_FORWARD, FFTW_MEASURE);
 #endif
 #endif
 #endif
@@ -171,15 +173,15 @@
 #ifdef TWOD
 #ifdef INPLACE
 #ifdef FASTPLAN 
-         p = fftwf_plan_dft_2d(nx, ny, in, in, FFTW_FORWARD, FFTW_ESTIMATE);
+         p = fftw_plan_dft_2d(nx, ny, in, in, FFTW_FORWARD, FFTW_ESTIMATE);
 #else
-         p = fftwf_plan_dft_2d(nx, ny, in, in, FFTW_FORWARD, FFTW_MEASURE);
+         p = fftw_plan_dft_2d(nx, ny, in, in, FFTW_FORWARD, FFTW_MEASURE);
 #endif
 #else
 #ifdef FASTPLAN 
-         p = fftwf_plan_dft_2d(nx, ny, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+         p = fftw_plan_dft_2d(nx, ny, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
 #else
-         p = fftwf_plan_dft_2d(nx, ny, in, out, FFTW_FORWARD, FFTW_MEASURE);
+         p = fftw_plan_dft_2d(nx, ny, in, out, FFTW_FORWARD, FFTW_MEASURE);
 #endif
 #endif
 #endif
@@ -187,15 +189,15 @@
 #ifdef THREED
 #ifdef INPLACE
 #ifdef FASTPLAN 
-         p = fftwf_plan_dft_3d(nx, ny, nz, in, in, FFTW_FORWARD, FFTW_ESTIMATE);
+         p = fftw_plan_dft_3d(nx, ny, nz, in, in, FFTW_FORWARD, FFTW_ESTIMATE);
 #else
-         p = fftwf_plan_dft_3d(nx, ny, nz, in, in, FFTW_FORWARD, FFTW_MEASURE);
+         p = fftw_plan_dft_3d(nx, ny, nz, in, in, FFTW_FORWARD, FFTW_MEASURE);
 #endif
 #else
 #ifdef FASTPLAN 
-         p = fftwf_plan_dft_3d(nx, ny, nz, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+         p = fftw_plan_dft_3d(nx, ny, nz, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
 #else
-         p = fftwf_plan_dft_3d(nx, ny, nz, in, out, FFTW_FORWARD, FFTW_MEASURE);
+         p = fftw_plan_dft_3d(nx, ny, nz, in, out, FFTW_FORWARD, FFTW_MEASURE);
 #endif
 #endif
 #endif
@@ -233,25 +235,7 @@
 #endif
          dt('i');
 
-//#ifdef HOSTMEM
-//         dt('i');
-//
-//#ifdef CUDA
-//         cudaMemcpy(devdata, data, arraySize, cudaMemcpyHostToDevice);
-//#endif
-//
-//#else
-//
-//#ifdef CUDA
-//         cudaMemcpy(devdata, data, arraySize, cudaMemcpyHostToDevice);
-//#endif
-//         dt('i');
-//#endif
-
-
-// calculate ffts
-
-         for (n_test=0; n_test<N_FFTS; n_test++)
+         for (int n_test=0; (n_test < N_FFTS); n_test++)
          {
 #ifdef CUDA
 #ifdef HOSTMEM
@@ -272,7 +256,7 @@
 #else
 //           for (i=0; i<N_FFTS ; i++)
  //          {
-             fftwf_execute(p); /* repeat as needed */
+             fftw_execute(p); /* repeat as needed */
  //          }
 #endif
          }
@@ -331,7 +315,7 @@
 
 
 #ifdef THREADED
-         fftwf_cleanup_threads();
+         fftw_cleanup_threads();
 #endif
 #ifdef CUDA
          cufftDestroy(plan);
@@ -340,8 +324,9 @@
          cudaFree(devdata);
          cudaFree(devdatao);
 #else
-         fftwf_destroy_plan(p);
-         fftwf_free(in); fftwf_free(out);
+         fftw_destroy_plan(p);
+         fftw_free(in); fftw_free(out);
 #endif
        }
      }
+

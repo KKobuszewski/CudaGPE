@@ -7,14 +7,14 @@
 #include <sys/mman.h>
 #include <math.h>
 #include <pthread.h>
+#include <cuda_runtime.h>
+
+#include "helper_cuda.h"
 
 #include "cudautils.h"
 #include "global.h"
 #include "simulation.h"
 #include "fileIO.h"
-
-//#define N 67108864
-
 
 // sturctures definitions
 
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
   cudaDeviceReset(); // we want to be certain of proper behaviour of the device
   //cudaDeviceSynchronize();
   // look for some goods solutions for initializing device
-  
+  gpuDeviceInit(0);
   
   // make stucture to pass all variables in program
   global_stuff = (Globals*) malloc( (size_t) sizeof(Globals));
@@ -88,6 +88,10 @@ int main(int argc, char* argv[]) {
   printf("lattice points in direction y: %u\n", NY);
   printf("lattice points in direction z: %u\n", NZ);
   printf("total number of points in a lattice: %u, 2**%u\n", NX*NY*NZ, (uint32_t) ( log(NX*NY*NZ)/log(2) ) );
+  printf("[xmin, xmax] : [%.15f, %.15f]\n", XMIN, XMAX);
+  printf("dx: %.15f\n",DX);
+  printf("[kxmin, kxmax] : [%.15f, %.15f]\n", KxMIN, KxMAX);
+  printf("dkx: %.15f\n",DKx);
   printf("\n");
   
   
@@ -114,6 +118,8 @@ int main(int argc, char* argv[]) {
     printf("\n");
   }
   
+  // open files
+  open_files();
   
   
   // create streams (CUDA)
@@ -166,6 +172,24 @@ int main(int argc, char* argv[]) {
   
   // close files
   mmap_destroy(global_stuff->init_wf_fd, global_stuff->init_wf_map, NX*NY*NZ * sizeof(double complex));
+  close_files(global_stuff->files, global_stuff->num_files);
+  
+  
+  /// free memory on device
+  cudaFree(global_stuff->complex_arr1_dev ); 	//
+  cudaFree(global_stuff->complex_arr2_dev ); 	//
+  //HANDLE_ERROR( cudaFree(global_stuff->double_arr1_dev)  ); 	//
+  cudaFree(global_stuff->propagator_T_dev ); 	//
+  //HANDLE_ERROR( cudaFree(global_stuff->propagator_Vext_dev) );	//
+  //HANDLE_ERROR( cudaFree(global_stuff->Vdip_dev) );		//
+  
+  
+  //HANDLE_ERROR( cudaFree(global_stuff->mean_T_dev) ); // result of integral with kinetic energy operator in momentum representaion
+  //HANDLE_ERROR( cudaFree(global_stuff->mean_Vdip_dev) ); // result of integral with Vdip operator in positions' representation
+  //HANDLE_ERROR( cudaFree(global_stuff->mean_Vext_dev) ); // result of integral with Vext operator in positions' representation
+  //HANDLE_ERROR( cudaFree(global_stuff->mean_Vcon_dev) ); // result of integral with Vcon operator in positions' representation
+  cudaFree(global_stuff->norm_dev ); //
+  
   
   // clear memory
   free(threads);

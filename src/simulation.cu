@@ -156,22 +156,22 @@ void* simulation_thread(void* passing_ptr) {
        fprintf( (global_stuff->files)[3], "norm (cublas) propagator_T_dev: %.15f\n", norm_host ); // should give 32 if everything is correct
        
        // header of a file <- DO FILEIO.C PRZENIESC!
-       fprintf( (global_stuff->files)[3], "\ntimestep:\tnorm before (kernel):\tnorm after (cublas):\n" );
+       fprintf( (global_stuff->files)[3], "\ntimestep:\tnorm after (cublas):\n" );
   
   
   // start algorithm
   // dt =
-  uint32_t saving_steps = 10;
-  uint32_t timesteps;
+  uint64_t saving_steps = 20;
+  uint64_t timesteps;
   while( FLAG_RUN_SIMULATION ) { // simulation will be runing until the flag is set to false
 #ifdef DEBUG
      timesteps = 1;
      printf("timesteps to be made: %u\n", timesteps);
 #else
-     timesteps = 100000;
-     printf("timesteps to be made: %u\n", timesteps);
+     timesteps = 3000000;
+     printf("%u. timesteps to be made: %u\n", saving_steps, timesteps);
 #endif
-     
+     uint32_t counter = 0;
      
      while(timesteps) {
        timesteps--;
@@ -191,21 +191,21 @@ void* simulation_thread(void* passing_ptr) {
        
        
        // count norm using own function
-       call_kernel_ZD_1d( ker_count_norm_wf_1d, global_stuff->complex_arr2_dev, global_stuff->norm_dev,  (global_stuff->streams)[SIMULATION_STREAM], 1024*sizeof(cuDoubleComplex) );
+       //call_kernel_ZD_1d( ker_count_norm_wf_1d, global_stuff->complex_arr2_dev, global_stuff->norm_dev,  (global_stuff->streams)[SIMULATION_STREAM], 1024*sizeof(cuDoubleComplex) );
        
        //count norm using CUBLAS
        //CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, global_stuff->complex_arr2_dev, 1, &norm_host) );
        
        //CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, global_stuff->propagator_T_dev, 1, global_stuff->norm_dev) );
        
-       cudaDeviceSynchronize();
-       HANDLE_ERROR( cudaMemcpyAsync(&norm_host, global_stuff->norm_dev,
+       //cudaDeviceSynchronize();
+       /*HANDLE_ERROR( cudaMemcpyAsync(&norm_host, global_stuff->norm_dev,
 				sizeof(double),
 				cudaMemcpyDeviceToHost,
-				(global_stuff->streams)[HELPER_STREAM]) );
+				(global_stuff->streams)[HELPER_STREAM]) );*/
        //norm_host *= sqrt(DX);
-       cudaDeviceSynchronize();
-       fprintf( (global_stuff->files)[3], "%lu.\t%.15f\t", (uint64_t) (1000-timesteps)*(10-saving_steps), norm_host );
+       //cudaDeviceSynchronize();
+       //fprintf( (global_stuff->files)[3], "%lu.\t%.15f\t", (uint64_t) (1000-timesteps)*(10-saving_steps), norm_host );
        
 #ifdef DEBUG
        // saving after fft
@@ -228,16 +228,7 @@ void* simulation_thread(void* passing_ptr) {
        // run kernel to normalize aftter FFT
        call_kernel_Z_1d( ker_normalize_1d, global_stuff->complex_arr1_dev, (global_stuff->streams)[SIMULATION_STREAM] );
        
-       CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, global_stuff->complex_arr1_dev, 1, global_stuff->norm_dev) );
-       cudaDeviceSynchronize();
        
-       HANDLE_ERROR( cudaMemcpyAsync(&norm_host, global_stuff->norm_dev,
-				sizeof(double),
-				cudaMemcpyDeviceToHost,
-				(global_stuff->streams)[HELPER_STREAM]) );
-       cudaDeviceSynchronize();
-       norm_host *= sqrt(DX);
-       fprintf( (global_stuff->files)[3], "%.15f\n", norm_host );
        
        /*
        // count DFT of modulus of wavefunction (in positions` space)
@@ -257,9 +248,26 @@ void* simulation_thread(void* passing_ptr) {
        // create propagator of Vdip (in)
        */
        
-       
+       // check norm
+       if ( counter == 10000 ) {
+	  CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, global_stuff->complex_arr1_dev, 1, global_stuff->norm_dev) );
+	  cudaDeviceSynchronize();
+	  
+	  HANDLE_ERROR( cudaMemcpyAsync(&norm_host, global_stuff->norm_dev,
+				    sizeof(double),
+				    cudaMemcpyDeviceToHost,
+				    (global_stuff->streams)[HELPER_STREAM]) );
+	  cudaDeviceSynchronize();
+	  norm_host *= sqrt(DX);
+	  fprintf( (global_stuff->files)[3], "%lu.\t%.15f\n", (3000000-timesteps+1)*(20-saving_steps+1), norm_host );
+	  counter = 0;
+       }
+       counter++;
        
      }
+     
+     
+     
        // saving after ifft
        HANDLE_ERROR( cudaMemcpy(global_stuff->wf_host, global_stuff->complex_arr1_dev, NX*NY*NZ*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost) );
        for (uint64_t ii=0 ; ii < NX*NY*NZ; ii++)

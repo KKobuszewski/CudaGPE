@@ -6,8 +6,9 @@
 #include <cuda.h>
 #include <cufft.h>
 #include <cufftXt.h>
+#include <cublas_v2.h>
 
-#define N ((uint64_t) 1<<22)
+#define N ((uint64_t) 1<<10)
 
 #define M_2PI (6.283185307179586)
 #define SQRT_2PI (2.5066282746310002)
@@ -15,12 +16,12 @@
 #define SIGMA (1)
 
 /*
- * compile: 	nvcc -dc -lm -g -G -Xptxas="-v" -m64 -O3 -o simple_example.o -c simple_example.cu
- * 		nvcc -m64 -arch=sm_35 -o simple_example simple_example.o -lcufft_static -lculibos
+ * compile: 	nvcc -dc -arch=sm_52 -lm -g -G -Xptxas="-v" -m64 -O3 -o simple_example.o -c simple_example.cu -lcublas -lcufft
+ * 		//nvcc -m64 -arch=sm_52 -o simple_example simple_example.o -lcufft_static -lculibos -lcublas
  * 
  *		//with store callback to normalize: 
  * 		nvcc -dc -lm -g -G -Xptxas="-v" -m64 -O3 -o simple_example_cb_store_normalize.o -c simple_example.cu -D STORE_CB_NORMALIZE
- * 		nvcc -m64 -arch=sm_35 -o simple_example_cb_store_normalize simple_example_cb_store_normalize.o -lcufft_static -lculibos
+ * 		nvcc -m64 -arch=sm_52 -o simple_example_cb_store_normalize simple_example_cb_store_normalize.o -lcufft_static -lculibos
  * 
  * sources:
  * http://devblogs.nvidia.com/parallelforall/cuda-pro-tip-use-cufft-callbacks-custom-data-processing/
@@ -111,8 +112,8 @@ static __device__ void cufft_normalize(void *dataOut,
   ((cufftDoubleComplex*) dataOut)[offset] = make_cuDoubleComplex( cuCreal(element)/((double) N), cuCimag(element)/((double) N) );
 }
 // pointer to callback function (on device)
-//__device__ cufftCallbackLoadZ d_loadCallbackPtr = cudaGauss_1d;
-__device__ cufftCallbackLoadZ d_loadCallbackPtr = cufftRect;
+__device__ cufftCallbackLoadZ d_loadCallbackPtr = cudaGauss_1d;
+//__device__ cufftCallbackLoadZ d_loadCallbackPtr = cufftRect;
 __device__ cufftCallbackStoreZ d_storeCallbackPtr = cufft_normalize;
 
 __global__ void kernel_normalize(cufftDoubleComplex* cufft_inverse_data) {
@@ -136,18 +137,37 @@ int main (){
   char filename1d[filename_str_lenght];
   FILE *file1d;
   
+  const double x0 = (-5*SIGMA);
+  const double dx = (-2*x0)/((double) N);
+  
+  cublasHandle_t cublas_handle;
+  cublasCreate(&cublas_handle);
+  cublasSetPointerMode(cublas_handle, CUBLAS_POINTER_MODE_HOST);
+  double norm =0.;
+  
 #ifdef STORE_CB_NORMALIZE
-  sprintf(filename1d,"cufft_%dd_N%lu_cb_store.bin",dim,N );
+  sprintf(filename1d,"cufft_%dd_N%lu_cb_store.txt",dim,N );
 #else
-  sprintf(filename1d,"cufft_%dd_N%lu.bin",dim,N );
+  sprintf(filename1d,"cufft_%dd_N%lu.txt",dim,N );
 #endif
   printf("1d cufft example save in: %s\n",filename1d);
-  file1d = fopen(filename1d, "wb");
+  file1d = fopen(filename1d, "w");
   if (file1d == NULL)
   {
       printf("Error opening file %s!\n",filename1d);
       exit(EXIT_FAILURE);
   }
+  
+  char filename_stats[filename_str_lenght];
+  sprintf(filename_stats,"cufft_%dd_N%lu_stats.txt",dim,N );
+  FILE* file_stats = fopen(filename_stats, "w");
+  fprintf(file_stats, "norm (cublas):\n");
+  
+  char filename_init[filename_str_lenght];
+  sprintf(filename_init,"cufft_%dd_N%lu_init.txt",dim,N );
+  FILE* file_init = fopen(filename_init, "w");
+  fprintf(file_init, "norm (cublas):\n");
+  
   
   printf("N %lu\n",N);
   
@@ -237,7 +257,7 @@ int main (){
   
   
   // EXECUTE TRANSFORM FORWARD AND BACKWADR
-  
+  // forward with intialization
   if (cufftExecZ2Z(plan, data_dev, data_dev, CUFFT_FORWARD) != CUFFT_SUCCESS){
     fprintf(stderr, "CUFFT error: ExecC2C Inverse failed");
     exit(EXIT_FAILURE);;
@@ -246,39 +266,68 @@ int main (){
   
   
   // copy data
-  cudaMemcpy(data_host, data_dev, N*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost);
-  cudaDeviceSynchronize();
+  //cudaMemcpy(data_host, data_dev, N*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost);
+  //cudaDeviceSynchronize();
   
-  printf("fft data forward:\n");
+  printf("fft data backward:\n");
+  for (uint64_t ii = 0; ii < N; ii++) {
+    if (N <= 32) printf("%lf + %lfj\n", cuCreal(data_host[ii]), cuCimag(data_host[ii]));
+    //fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
+    fprintf(file_init, "%.15f\t%.15f\t%.15f\n", x0+dx*ii ,cuCreal(data_host[ii]), cuCimag(data_host[ii]) );
+  }
+  /*printf("fft data forward:\n");
   for (uint64_t ii = 0; ii < N; ii++) {
     if (N <= 32) printf("%lf + %lfj\n", cuCreal(data_host[ii]), cuCimag(data_host[ii]));
     fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
+  }*/
+  
+  // make fft 10000x and check if norm properly
+  for (uint64_t jj = 0; jj < 1000000; jj++) {
+	
+    // execute back
+	if (cufftExecZ2Z(plan_back, data_dev, data_dev, CUFFT_INVERSE) != CUFFT_SUCCESS){
+	  fprintf(stderr, "CUFFT error: ExecC2C Inverse failed");
+	  exit(EXIT_FAILURE);;
+	}
+	
+	
+	
+	cudaDeviceSynchronize();
+      #ifndef STORE_CB_NORMALIZE
+	// run kernel to normalize
+	uint64_t threadsPerBlock;
+	if (N >= 33554432)
+	  threadsPerBlock = 1024;
+	else {
+	  threadsPerBlock = 128; // seems max grid size is ( 32768, ?, ? ) <- ????
+	}
+	dim3 dimBlock(threadsPerBlock,1,1);
+	dim3 dimGrid( (N + threadsPerBlock - 1)/threadsPerBlock, 1, 1 ); // (numElements + threadsPerBlock - 1) / threadsPerBlock
+	//printf("initating wavefunction on host. Kernel invocation:\n");
+	//printf("threads Per block: %lu\n", threadsPerBlock);
+	//printf("blocks: %lu\n",(N + threadsPerBlock - 1)/threadsPerBlock);
+	// filling with data
+	kernel_normalize<<<dimGrid,dimBlock>>>(data_dev);
+	
+      #endif
+	cudaDeviceSynchronize();
+	cublasDznrm2( cublas_handle, N, data_dev, 1, &norm);
+	cudaDeviceSynchronize();
+	
+	if (cufftExecZ2Z(plan_back, data_dev, data_dev, CUFFT_FORWARD) != CUFFT_SUCCESS){
+	  fprintf(stderr, "CUFFT error: ExecC2C FORWARD failed");
+	  exit(EXIT_FAILURE);;
+	}
+	
+	fprintf(file_stats, "%.15f\n", norm*sqrt(dx) );
+	cudaDeviceSynchronize();
   }
   
-  
-  // execute back
+  // one more time back
   if (cufftExecZ2Z(plan_back, data_dev, data_dev, CUFFT_INVERSE) != CUFFT_SUCCESS){
-    fprintf(stderr, "CUFFT error: ExecC2C Inverse failed");
-    exit(EXIT_FAILURE);;
-  }
-  cudaDeviceSynchronize();
-#ifndef STORE_CB_NORMALIZE
-  // run kernel to normalize
-  uint64_t threadsPerBlock;
-  if (N >= 33554432)
-    threadsPerBlock = 1024;
-  else {
-    threadsPerBlock = 128; // seems max grid size is ( 32768, ?, ? ) <- ????
-  }
-  dim3 dimBlock(threadsPerBlock,1,1);
-  dim3 dimGrid( (N + threadsPerBlock - 1)/threadsPerBlock, 1, 1 ); // (numElements + threadsPerBlock - 1) / threadsPerBlock
-  printf("initating wavefunction on host. Kernel invocation:\n");
-  printf("threads Per block: %lu\n", threadsPerBlock);
-  printf("blocks: %lu\n",(N + threadsPerBlock - 1)/threadsPerBlock);
-  // filling with data
-  kernel_normalize<<<dimGrid,dimBlock>>>(data_dev);
-  HANDLE_ERROR( cudaGetLastError() );
-#endif
+      fprintf(stderr, "CUFFT error: ExecC2C Inverse failed");
+      exit(EXIT_FAILURE);;
+    }
   
   // copy data
   cudaMemcpy(data_host, data_dev, N*sizeof(cufftDoubleComplex), cudaMemcpyDeviceToHost);
@@ -287,11 +336,15 @@ int main (){
   printf("fft data backward:\n");
   for (uint64_t ii = 0; ii < N; ii++) {
     if (N <= 32) printf("%lf + %lfj\n", cuCreal(data_host[ii]), cuCimag(data_host[ii]));
-    fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
+    //fwrite(data_host+ii, sizeof(cuDoubleComplex),1,file1d);
+    fprintf(file1d, "%.15f\t%.15f\t%.15f\n", x0+dx*ii ,cuCreal(data_host[ii]), cuCimag(data_host[ii]) );
   }
   
   
   fclose(file1d);
+  fclose(file_stats);
+  
+  cublasDestroy(cublas_handle);
   
   cudaFree(data_dev);
   cudaFreeHost(data_host);

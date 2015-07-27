@@ -17,13 +17,13 @@
 #define REAL_TIME -1
 #define IMAG_TIME -COMPLEX_I
 
-#define DT ((double) 1e-07)
+#define DT ((double) 1e-05)
 
 // scalling the grid <- poprawic by nie bylo obliczen !!!
-#define XMAX ((double) 512)
+#define XMAX ((double) 0.5)
 #define XMIN (-XMAX)
-#define DX ((double) (XMAX - XMIN)/NX)
-#define DKx ((double) 6.283185307179586/(NX*DX))
+#define DX ((double) (XMAX - XMIN)/(NX-1))
+#define DKx ((double) 6.283185307179586/(XMAX-XMIN))
 #define KxMAX ((double) 6.283185307179586/(2*DX))
 #define KxMIN ((double) -6.283185307179586/(2*DX))
 

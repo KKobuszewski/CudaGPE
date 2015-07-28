@@ -17,7 +17,7 @@ CUINCL    = -I /usr/local/cuda-7.0/include -I /usr/local/cuda/samples/common/inc
 # -I /usr/local/cuda/include -I /usr/local/cuda-7.0/samples/common/inc -L /usr/local/cuda/lib
 CULIBS    = -lcufft -lcublas
 
-PROG=gpe
+PROG=../bin/gpe
 PROG2=gpe_debug
 
 OBJS =  main.o fileIO.o cudautils.o simulation.o kernels.o

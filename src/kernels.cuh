@@ -43,7 +43,7 @@ __global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* n
  * 																	 *
  * ************************************************************************************************************************************* */
 // these kernels have in argument two arrays of complex numbers
-__global__ void ker_popagate_T(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* popagator_T_dev);
+__global__ void ker_propagate(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* popagator_T_dev);
 
 
 // device-only functions and variables

@@ -17,15 +17,31 @@
 #define REAL_TIME -1
 #define IMAG_TIME -COMPLEX_I
 
-#define DT ((double) 1e-05)
+#define DT ((double) 1e-08)
 
 // scalling the grid <- poprawic by nie bylo obliczen !!!
-#define XMAX ((double) 0.5)
+#define XMAX ((double) 5)
 #define XMIN (-XMAX)
-#define DX ((double) (XMAX - XMIN)/(NX-1))
+#define DX ((double) (XMAX - XMIN)/(NX))
 #define DKx ((double) 6.283185307179586/(XMAX-XMIN))
-#define KxMAX ((double) 6.283185307179586/(2*DX))
-#define KxMIN ((double) -6.283185307179586/(2*DX))
+#define KxMAX ((double) 3.14159265358979323846/(DX))
+#define KxMIN ((double) -3.14159265358979323846/(DX))
+#define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )
+
+/*
+const uint64_t Nx, Ny, Nz;
+const double dx, dkx;
+const double xmin, xmax;
+const double kxmin, kxmax;
+const double dt;
+*/
+
+
+static inline double kx(const uint16_t index) {
+  return (index < NX/2) ? index * DKx : KxMIN + (index - NX/2) * DKx;
+}
+
+
 
 
 typedef void* (*Array_of_thrd_functions[])(void*);

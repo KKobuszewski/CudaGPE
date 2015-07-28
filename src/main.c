@@ -92,6 +92,9 @@ int main(int argc, char* argv[]) {
   printf("dx: %.15f\n",DX);
   printf("[kxmin, kxmax] : [%.15f, %.15f]\n", KxMIN, KxMAX);
   printf("dkx: %.15f\n",DKx);
+  //printf("width of gauss in positions space (points on lattice): %.15f\n");
+  //printf("width of gauss in positions space (points on lattice): %.15f\n");
+  printf("harmonic potential angular freq.: %.15f", OMEGA);
   printf("\n");
   
   

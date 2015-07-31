@@ -14,40 +14,6 @@
 #include "cuda_complex_ext.cuh"
 
 
-// tests with callbacks
-#define M_2PI ((double) 6.283185307179586)
-#define SQRT_2PI ((double) 2.5066282746310002)
-#define INV_SQRT_2PI ((double) 0.3989422804014327)
-#define SIGMA ( XMAX*sqrt(2./(3.14159265358979323846*NX)) )
-
-
-/* ************************************************************************************************************************************* *
- * 																	 *
- * 							LOAD CALLBACKS									 *
- * 																	 *
- * ************************************************************************************************************************************* */
-
-static __device__ cufftDoubleComplex cufftSgn(void *dataIn, 
-					      size_t offset, 
-					      void *callerInfo, 
-					      void *sharedPtr) 
-{
-    if (offset < (NX*NY*NZ)/2)
-      return make_cuDoubleComplex(-1.,0.);
-    else
-      return make_cuDoubleComplex(1.,0.);
-}
-
-static __device__ cufftDoubleComplex cufftGauss_1d(void *dataIn, 
-						  size_t offset, 
-						  void *callerInfo, 
-						  void *sharedPtr) 
-{
-  // allocate constants in shared memory <- how to do that???
-  const double x0 = (-5*SIGMA);
-  const double dx = (10*SIGMA)/((double) NX*NY*NZ);
-  return make_cuDoubleComplex( sqrt(INV_SQRT_2PI/SIGMA)*exp(-(x0 + offset*dx)*(x0 + offset*dx)/4/(SIGMA*SIGMA)), 0. );
-}
 
 
 
@@ -57,7 +23,8 @@ static __device__ cufftDoubleComplex cufftGauss_1d(void *dataIn,
  * 																	 *
  * ************************************************************************************************************************************* */
 
-
+#define SIGMA ( XMAX*sqrt(2./(3.14159265358979323846*NX)) )
+#define OFFSET_X ((double) 0.0)
 __global__ void ker_gauss_1d(cuDoubleComplex* data) {
   // get the index of thread
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
@@ -68,7 +35,7 @@ __global__ void ker_gauss_1d(cuDoubleComplex* data) {
   //const double dx = (10*SIGMA)/((double) N);
   
   if (ii < N) {
-    data[ii] = make_cuDoubleComplex( sqrt(INV_SQRT_2PI/SIGMA)*exp(-(XMIN + ii*DX + SIGMA)*(XMIN + ii*DX + SIGMA)/4/(SIGMA*SIGMA)), 0. );
+    data[ii] = make_cuDoubleComplex( sqrt(INV_SQRT_2PI/SIGMA)*exp(-(XMIN + ii*DX + OFFSET_X)*(XMIN + ii*DX + OFFSET_X)/4/(SIGMA*SIGMA)), 0. );
   }
   
   __syncthreads();
@@ -91,6 +58,7 @@ __global__ void ker_normalize_1d(cufftDoubleComplex* cufft_inverse_data) {
   
   while (ii < NX) {
     cufft_inverse_data[ii] = make_cuDoubleComplex( cuCreal(cufft_inverse_data[ii])/((double) NX), cuCimag(cufft_inverse_data[ii])/((double) NX) );
+    // check division Intrinsics ddiv_rz <- round to zero mode (maybe less problems with norm ??? & faster )
     //cufft_inverse_data[ii] = make_cuDoubleComplex( __ddiv_rn(cuCreal(cufft_inverse_data[ii]),(double) NX) ,
 	//					   __ddiv_rn(cuCimag(cufft_inverse_data[ii]),(double) NX) );
     ii += blockDim.x * gridDim.x;
@@ -182,11 +150,12 @@ __global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* n
   
   uint16_t tid = threadIdx.x;
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  if (ii == 0) *norm_dev = 0;
   
   // load |psi|^2(x) to shared memory
   //shared_mods[tid] = cuCreal(complex_arr_dev[ii])*cuCreal(complex_arr_dev[ii]) + cuCimag(complex_arr_dev[ii])*cuCimag(complex_arr_dev[ii]);
   if (ii < NX*NY*NZ)
-    shared_mods[ii] = cuCSqAbs(complex_arr_dev[ii]);// + cuCSqAbs(complex_arr_dev[ii + blockDim.x]); // blockDim.x MUSI BYC ODPOWIEDNIEJ DLUGOSCI
+    shared_mods[tid] = cuCSqAbs(complex_arr_dev[ii]);// + cuCSqAbs(complex_arr_dev[ii + blockDim.x]); // blockDim.x MUSI BYC ODPOWIEDNIEJ DLUGOSCI
   __syncthreads();
   
   // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
@@ -203,8 +172,110 @@ __global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* n
   if (tid==0) *norm_dev += shared_mods[0];
   
   __syncthreads();
-  if (ii == 0) *norm_dev *= sqrt(DX);
+  //if (ii == 0) *norm_dev *= sqrt(DX);
   
+}
+
+__global__ void ker_normalize_1d(cuDoubleComplex* data, double* norm) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  // SPRAWDZIC CZY NIE DA SIE PRZYSPIESZYC POPRZEZ CONSTANT / SHARED MEMOMRY (SKOPIOWAC TAM WARTOSC NORMY) !!!
+  
+  while (ii < NX) {
+    data[ii] = make_cuDoubleComplex( cuCreal(data[ii])/(*norm)/sqrt(DX), cuCimag(data[ii])/(*norm)/sqrt(DX) );
+    ii += blockDim.x * gridDim.x;
+  }
+}
+
+
+__global__ void ker_energy_T_1d(cuDoubleComplex* wf_k, double* T_mean) {
+  extern __shared__ double shared_mods[]; // CZY TO SIE ZMIESCI W SHARED MEMORY ???
+  
+  uint16_t tid = threadIdx.x;
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  if (ii == 0) *T_mean = 0;
+  
+  // load psi* x Op(psi) to shared memory;
+  if (ii < NX*NY*NZ)
+    shared_mods[tid] = operator_T_dev(wf_k[ii], ii);
+  __syncthreads();
+  
+  // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
+  for (uint32_t s=blockDim.x/2; s > 0; s>>=1) {
+    // sequential addressing in shared memory
+    if (tid < s) {
+      shared_mods[tid] += shared_mods[tid+s];
+    }
+    
+    __syncthreads();
+  }
+  
+  // add results to variable in global memory <- CZY W TEN SPOSOB TO NIE BEDZIE POWODOWAC BLEDOW ???
+  if (tid==0) *T_mean += shared_mods[0];
+}
+
+__global__ void ker_energy_Vext_1d(cuDoubleComplex* wf, double* Vext_mean) {
+  extern __shared__ double shared_mods[]; // CZY TO SIE ZMIESCI W SHARED MEMORY ???
+  
+  uint16_t tid = threadIdx.x;
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  if (ii == 0) *Vext_mean = 0;
+  
+  // load psi* x Op(psi) to shared memory;
+  if (ii < NX*NY*NZ)
+    shared_mods[tid] = operator_Vext_dev(wf[ii], ii);
+  __syncthreads();
+  
+  // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
+  for (uint32_t s=blockDim.x/2; s > 0; s>>=1) {
+    // sequential addressing in shared memory
+    if (tid < s) {
+      shared_mods[tid] += shared_mods[tid+s];
+    }
+    
+    __syncthreads();
+  }
+  
+  // add results to variable in global memory <- CZY W TEN SPOSOB TO NIE BEDZIE POWODOWAC BLEDOW ???
+  if (tid==0) *Vext_mean += shared_mods[0];
+}
+
+
+
+//		!!!!!!!!!!!!!!!!!!   TO NIE DZIALA   !!!!!!!!!!!!!!!!!!!
+/*
+ * Kernel that counts expected value of an operator represented by function passed in dev_funcZ_ptr_t operator
+ * dev_funcZ_ptr_t operator - (host copy of) device pointer to device function representing action of diagonal operator on wavefunction
+ * double* mean - pointer to device memory location to store <operator>
+ * 
+ */
+__global__ void ker_operator_mean_1d( dev_funcZ_ptr_t func, cuDoubleComplex* wf, double* mean ) {
+  extern __shared__ double shared_mods[]; // CZY TO SIE ZMIESCI W SHARED MEMORY ???
+  
+  uint16_t tid = threadIdx.x;
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  // load psi* x Op(psi) to shared memory;
+  if (ii < NX*NY*NZ)
+    shared_mods[tid] = func(wf[ii], ii);
+  __syncthreads();
+  
+  // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
+  for (uint32_t s=blockDim.x/2; s > 0; s>>=1) {
+    // sequential addressing in shared memory
+    if (tid < s) {
+      shared_mods[tid] += shared_mods[tid+s];
+    }
+    
+    __syncthreads();
+  }
+  
+  // add results to variable in global memory <- CZY W TEN SPOSOB TO NIE BEDZIE POWODOWAC BLEDOW ???
+  if (tid==0) *mean += shared_mods[0];
+  
+  //__syncthreads();
+  //if (ii == 0) *mean *= sqrt(DX);
+    
 }
 
 
@@ -217,12 +288,33 @@ __global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* n
 __global__ void ker_propagate(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* propagator_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
-  if (ii < NX*NY*NZ) {
+  while (ii < NX*NY*NZ) {
     // WYTESTOWAC CZY SZYBSZE NIE BEDZIE OBLICZANIE PROPAGATORA
     wf_momentum_dev[ii] = cuCmul( wf_momentum_dev[ii], propagator_dev[ii] );
+    ii += blockDim.x * gridDim.x;
   }
 }
 
+
+__global__ void ker_T_wf(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* result_dev) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  while (ii < NX*NY*NZ) {
+    result_dev[ii] = cuCmul(wf_momentum_dev[ii], kx_dev(ii)*kx_dev(ii));
+    ii += blockDim.x * gridDim.x;
+  }
+  
+}
+
+__global__ void ker_Vext_wf(cuDoubleComplex* wf_dev, cuDoubleComplex* result_dev) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  while (ii < NX*NY*NZ) {
+    result_dev[ii] = cuCmul(wf_dev[ii], (XMIN + ii*DX)*(XMIN + DX*ii) );
+    ii += blockDim.x * gridDim.x;
+  }
+  
+}
 
 
 
@@ -252,9 +344,9 @@ static __device__ void normalize();
 
 
 // callbacks
-static __device__ cuDoubleComplex propagate_Vext();
-static __device__ cuDoubleComplex propagate_T();
-static __device__ cuDoubleComplex propagate_Vcon();
+//static __device__ cuDoubleComplex propagate_Vext();
+//static __device__ cuDoubleComplex propagate_T();
+//static __device__ cuDoubleComplex propagate_Vcon();
 static __device__ cuDoubleComplex propagate_Vdip();
 
 // pointer to callbacks' functions
@@ -266,3 +358,38 @@ __device__ cufftCallbackLoadD CB_LD_DIPOLAR_FORWARD();
 __device__ cufftCallbackStoreZ CB_ST_DIPOLAR_FORWARD();
 __device__ cufftCallbackLoadZ CB_LD_DIPOLAR_INVERSE();
 __device__ cufftCallbackStoreZ CB_ST_DIPOLAR_INVERSE();
+
+
+// tests with callbacks
+
+
+/* ************************************************************************************************************************************* *
+ * 																	 *
+ * 							LOAD CALLBACKS									 *
+ * 																	 *
+ * ************************************************************************************************************************************* */
+
+static __device__ cufftDoubleComplex cufftSgn(void *dataIn, 
+					      size_t offset, 
+					      void *callerInfo, 
+					      void *sharedPtr) 
+{
+    if (offset < (NX*NY*NZ)/2)
+      return make_cuDoubleComplex(-1.,0.);
+    else
+      return make_cuDoubleComplex(1.,0.);
+}
+
+static __device__ cufftDoubleComplex cufftGauss_1d(void *dataIn, 
+						  size_t offset, 
+						  void *callerInfo, 
+						  void *sharedPtr) 
+{
+  // allocate constants in shared memory <- how to do that???
+  const double x0 = (-5*SIGMA);
+  const double dx = (10*SIGMA)/((double) NX*NY*NZ);
+  return make_cuDoubleComplex( sqrt(INV_SQRT_2PI/SIGMA)*exp(-(x0 + offset*dx)*(x0 + offset*dx)/4/(SIGMA*SIGMA)), 0. );
+}
+
+
+

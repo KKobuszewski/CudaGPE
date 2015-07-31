@@ -10,23 +10,40 @@
 #include <cufft.h>
 
 // simulation parameters
-#define NX ( (uint32_t) 1024 ) // type should be large enough to collect NX*NY*NZ
+#define NX ( (uint32_t) 2048 ) // type should be large enough to collect NX*NY*NZ
 #define NY ( (uint32_t) 1 )
 #define NZ ( (uint32_t) 1 )
 #define DIM 1
-#define REAL_TIME -1
-#define IMAG_TIME -COMPLEX_I
 
-#define DT ((double) 1e-08)
+// evolution type
+//#define REAL_TIME ( (double complex) -I)
+//#define IMAG_TIME ( (double complex) -1)
+//#define REAL_TIME -I
+//#define IMAG_TIME -1
+
+#ifndef EVOLUTION
+//#define EVOLUTION REAL_TIME
+#endif
+
+// TIMESTEP LENGTH
+#define DT ((double) 1e-07)
 
 // scalling the grid <- poprawic by nie bylo obliczen !!!
-#define XMAX ((double) 5)
+#define XMAX ((double) .5)
 #define XMIN (-XMAX)
 #define DX ((double) (XMAX - XMIN)/(NX))
 #define DKx ((double) 6.283185307179586/(XMAX-XMIN))
 #define KxMAX ((double) 3.14159265358979323846/(DX))
 #define KxMIN ((double) -3.14159265358979323846/(DX))
 #define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )
+
+
+
+#define M_2PI ((double) 6.283185307179586)
+#define SQRT_2PI ((double) 2.5066282746310002)
+#define INV_SQRT_2PI ((double) 0.3989422804014327)
+
+
 
 /*
 const uint64_t Nx, Ny, Nz;
@@ -44,6 +61,9 @@ static inline double kx(const uint16_t index) {
 
 
 
+// typedef for function pointers to device functions
+typedef double (*dev_funcZ_ptr_t)(cuDoubleComplex, uint64_t); // data, index
+
 typedef void* (*Array_of_thrd_functions[])(void*);
 
 typedef struct Globals {
@@ -60,6 +80,7 @@ typedef struct Globals {
   // memory maps
   double complex* init_wf_map; // map
   int init_wf_fd; // file descriptor
+  int wf_save_fd;
   
   // data structures on host
   double complex* wf_host;
@@ -101,6 +122,7 @@ extern Globals* global_stuff;
 extern pthread_barrier_t barrier;// <- this barrier synchronizes only local threads that manage algorith and device
 extern pthread_barrier_t barrier_global;
 extern const uint8_t num_streams;
+extern double complex* wf_mmap;
 const uint8_t num_plans = 4;
 
 // names

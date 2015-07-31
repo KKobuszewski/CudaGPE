@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <math.h>
 #include <pthread.h>
 #include <cuda_runtime.h>
@@ -45,12 +47,61 @@ Array_of_thrd_functions thread_funcs = {simulation_thread, helper_thread};// typ
 
 
 
+// mmap of wavefunction to be saved
+double complex* wf_mmap;
 
 
 
+void sig_handler(int signo)
+{
+  printf("\nPOSIX signal catched!\n");
+  printf("received signal: ");
+    if (signo == SIGINT) printf("%d SIGINT\n",signo);
+    if (signo == SIGHUP) printf("%d SIGHUP\n",signo);
+    if (signo == SIGQUIT) printf("%d SIGQUIT\n",signo);
+    if (signo == SIGILL) printf("%d SIGILL\n",signo);
+    if (signo == SIGABRT) printf("%d SIGABRT\n",signo);
+    if (signo == SIGFPE) printf("%d SIGFPET\n",signo);
+    if (signo == SIGKILL) printf("%d SIGKILL\n",signo);
+    if (signo == SIGSEGV) printf("%d SIGSEGV\nSegmentation fault on HOST! (core dumped)\n",signo);
+    if (signo == SIGSTOP) printf("%d SIGSTOP\n",signo);
+  
+  // close files
+  mmap_destroy(global_stuff->init_wf_fd, global_stuff->init_wf_map, NX*NY*NZ * sizeof(double complex));
+  close_files(global_stuff->files, global_stuff->num_files);
+  
+  cudaThreadExit();
+  cudaDeviceReset();
+  
+  printf("Main: program completed. Exiting...\n");
+  exit(0);
+}
 
-
-
+/*
+ * This function sets the same signal handler to all signals that can be catched
+ * sig_handler must be a poiter to signal handler function (just a name of function)
+ * (I think this is the most useful solition if we need to protect GPU memory)
+ */
+void set_signals_same() {
+  printf("\nsetting signal actions.\n");
+  for(int signo = 0; signo < 31; signo++) {
+#ifdef DEBUG
+    if (signo == SIGHUP) printf("%d SIGHUP\n",signo);
+    if (signo == SIGINT) printf("%d SIGINT\n",signo);
+    if (signo == SIGQUIT) printf("%d SIGQUIT\n",signo);
+    if (signo == SIGILL) printf("%d SIGILL\n",signo);
+    if (signo == SIGABRT) printf("%d SIGABRT\n",signo);
+    if (signo == SIGFPE) printf("%d SIGFPET\n",signo);
+    if (signo == SIGKILL) printf("__global__ void ker_energy_T_1d(cuDoubleComplex* wf_k, double* T_mean)%d SIGKILL\n",signo);
+    if (signo == SIGSEGV) printf("%d SIGSEGV\n",signo);
+    if (signo == SIGSTOP) printf("%d SIGSTOP\n",signo);
+    if (signal(signo, sig_handler) == SIG_ERR) printf("\ncan't catch %d\n", signo);
+#else
+    signal(signo, sig_handler);
+#endif
+  }
+  
+}
 
 /*
  * main function in main thread will only manage another threads - this allows having heterogenous and multistreamed application.
@@ -82,6 +133,11 @@ int main(int argc, char* argv[]) {
   global_stuff->init_wf_fd = -1;
   
   printf("\n");
+#ifdef IMAG_TIME
+  printf("****************************************************************************************************************\n");
+  printf("*                                       IMAGINARY TIME EVOLUTION                                               *\n");
+  printf("****************************************************************************************************************\n");
+#endif
   printf("Simulation params: \n");
   printf("dimensions: %u\n", DIM);
   printf("lattice points in direction x: %u\n", NX);
@@ -147,7 +203,17 @@ int main(int argc, char* argv[]) {
     pthread_setaffinity_np(threads[ii], sizeof(cpu_set_t), &cpu_core);
     if (CPU_ISSET(ii, &cpu_core)) printf("affinity thread %s set successfully.\n",thread_names[ii]);
   }
+  set_signals_same();
   pthread_barrier_wait (&barrier_global); // global lock for threads
+  
+  // creating mmap to save wavefunction
+  char wf_mmap_filepath[256], str_date[16];
+  time_t t = time(NULL);
+  sprintf( wf_mmap_filepath,"./wavefunction_dim%d_N%d_%s.bin", DIM, NX*NY*NZ, strftime(str_date, sizeof(str_date), "%Y-%m-%d_%H:%M", localtime(&t)) );
+  global_stuff->wf_save_fd = mmap_create(wf_mmap_filepath,
+              (void**) &wf_mmap,
+	      NX*NY*NZ * sizeof(double complex),
+	      PROT_READ | PROT_WRITE, MAP_SHARED);
   
   // allocate memory ?
   
@@ -175,6 +241,7 @@ int main(int argc, char* argv[]) {
   
   // close files
   mmap_destroy(global_stuff->init_wf_fd, global_stuff->init_wf_map, NX*NY*NZ * sizeof(double complex));
+  mmap_destroy(global_stuff->wf_save_fd, wf_map, NX*NY*NZ * sizeof(double complex));
   close_files(global_stuff->files, global_stuff->num_files);
   
   
@@ -184,12 +251,12 @@ int main(int argc, char* argv[]) {
   //HANDLE_ERROR( cudaFree(global_stuff->double_arr1_dev)  ); 	//
   cudaFree(global_stuff->propagator_T_dev ); 	//
   //HANDLE_ERROR( cudaFree(global_stuff->propagator_Vext_dev) );	//
-  //HANDLE_ERROR( cudaFree(global_stuff->Vdip_dev) );		//
+  cudaFree(global_stuff->Vdip_dev);		//
   
   
-  //HANDLE_ERROR( cudaFree(global_stuff->mean_T_dev) ); // result of integral with kinetic energy operator in momentum representaion
+  cudaFree(global_stuff->mean_T_dev); // result of integral with kinetic energy operator in momentum representaion
   //HANDLE_ERROR( cudaFree(global_stuff->mean_Vdip_dev) ); // result of integral with Vdip operator in positions' representation
-  //HANDLE_ERROR( cudaFree(global_stuff->mean_Vext_dev) ); // result of integral with Vext operator in positions' representation
+  cudaFree(global_stuff->mean_Vext_dev); // result of integral with Vext operator in positions' representation
   //HANDLE_ERROR( cudaFree(global_stuff->mean_Vcon_dev) ); // result of integral with Vcon operator in positions' representation
   cudaFree(global_stuff->norm_dev ); //
   
@@ -205,6 +272,9 @@ int main(int argc, char* argv[]) {
   printf("Main: program completed. Exiting...\n");
   cudaThreadExit();
   cudaDeviceReset();
+  
+  // think about use atexit(<poiter to function that makes user-defined action just before main ends>)
+  
   return EXIT_SUCCESS;
 }
 

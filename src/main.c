@@ -43,12 +43,14 @@ pthread_attr_t attr;
 Array_of_thrd_functions thread_funcs = {simulation_thread, helper_thread};// type Array_of_thrd_functions is defined in global.h
 
 // cuda streams
-//cudaStream_t* streams;
+cudaStream_t* streams;
 
 
 
 // mmap of wavefunction to be saved
 double complex* wf_mmap;
+double complex* init_wf_mmap;
+struct_file** files;
 
 
 
@@ -67,7 +69,8 @@ void sig_handler(int signo)
     if (signo == SIGSTOP) printf("%d SIGSTOP\n",signo);
   
   // close files
-  mmap_destroy(global_stuff->init_wf_fd, global_stuff->init_wf_map, NX*NY*NZ * sizeof(double complex));
+  mmap_destroy(global_stuff->init_wf_fd, init_wf_mmap, NX*NY*NZ * sizeof(double complex));
+  mmap_destroy(global_stuff->wf_save_fd, wf_mmap, NX*NY*NZ * sizeof(double complex));
   close_files(global_stuff->files, global_stuff->num_files);
   
   cudaThreadExit();
@@ -163,11 +166,11 @@ int main(int argc, char* argv[]) {
     if (ii == 1) {
       printf("\tinitial wavefunction will be loaded from file %s", argv[ii]);
       global_stuff->init_wf_fd = mmap_create(argv[ii],					// in fileIO.c
-					     (void**) &(global_stuff->init_wf_map),
+					     (void**) &(init_wf_mmap),
 					     NX*NY*NZ * sizeof(double complex),
-					     PROT_READ, MAP_SHARED);
+					     PROT_READ, MAP_PRIVATE);
 #ifdef DEBUG
-      printf("\n\t\t\t\tsample of mmaped initial wavefunction: %lf + %lfj\n", creal(global_stuff->init_wf_map[1000]), cimag(global_stuff->init_wf_map[1000]));
+      printf("\n\t\t\t\tsample of mmaped initial wavefunction: %lf + %lfj\n", creal(init_wf_mmap[1000]), cimag(init_wf_mmap[1000]));
 #endif
       
     }
@@ -182,7 +185,7 @@ int main(int argc, char* argv[]) {
   
   
   // create streams (CUDA)
-  global_stuff->streams = (cudaStream_t*) malloc( (size_t) sizeof(cudaStream_t)*num_streams );
+  streams = (cudaStream_t*) malloc( (size_t) sizeof(cudaStream_t)*num_streams );
   
   // create threads (POSIX)
   pthread_t* threads = (pthread_t*) malloc( (size_t) sizeof(pthread_t)*num_threads );
@@ -204,16 +207,16 @@ int main(int argc, char* argv[]) {
     if (CPU_ISSET(ii, &cpu_core)) printf("affinity thread %s set successfully.\n",thread_names[ii]);
   }
   set_signals_same();
+  files = open_struct_files(4);
   pthread_barrier_wait (&barrier_global); // global lock for threads
   
   // creating mmap to save wavefunction
-  char wf_mmap_filepath[256], str_date[16];
+  char wf_mmap_filepath[256], str_date[17];
   time_t t = time(NULL);
-  sprintf( wf_mmap_filepath,"./wavefunction_dim%d_N%d_%s.bin", DIM, NX*NY*NZ, strftime(str_date, sizeof(str_date), "%Y-%m-%d_%H:%M", localtime(&t)) );
-  global_stuff->wf_save_fd = mmap_create(wf_mmap_filepath,
-              (void**) &wf_mmap,
-	      NX*NY*NZ * sizeof(double complex),
-	      PROT_READ | PROT_WRITE, MAP_SHARED);
+  strftime(str_date, sizeof(str_date), "%Y-%m-%d_%H:%M", localtime(&t));
+  sprintf( wf_mmap_filepath,"./wavefunction_dim%d_N%d_%s.bin", DIM, NX*NY*NZ, str_date );
+  printf("%s\n",wf_mmap_filepath);
+  global_stuff->wf_save_fd = mmap_create(wf_mmap_filepath, (void**) &wf_mmap, NX*NY*NZ * sizeof(double complex), PROT_READ | PROT_WRITE, MAP_SHARED);
   
   // allocate memory ?
   
@@ -240,32 +243,20 @@ int main(int argc, char* argv[]) {
   
   
   // close files
-  mmap_destroy(global_stuff->init_wf_fd, global_stuff->init_wf_map, NX*NY*NZ * sizeof(double complex));
-  mmap_destroy(global_stuff->wf_save_fd, wf_map, NX*NY*NZ * sizeof(double complex));
+  mmap_destroy(global_stuff->init_wf_fd, init_wf_mmap, NX*NY*NZ * sizeof(double complex));
+  mmap_destroy(global_stuff->wf_save_fd, wf_mmap, NX*NY*NZ * sizeof(double complex));
   close_files(global_stuff->files, global_stuff->num_files);
+  close_struct_files(files, global_stuff->num_files);
   
   
-  /// free memory on device
-  cudaFree(global_stuff->complex_arr1_dev ); 	//
-  cudaFree(global_stuff->complex_arr2_dev ); 	//
-  //HANDLE_ERROR( cudaFree(global_stuff->double_arr1_dev)  ); 	//
-  cudaFree(global_stuff->propagator_T_dev ); 	//
-  //HANDLE_ERROR( cudaFree(global_stuff->propagator_Vext_dev) );	//
-  cudaFree(global_stuff->Vdip_dev);		//
   
-  
-  cudaFree(global_stuff->mean_T_dev); // result of integral with kinetic energy operator in momentum representaion
-  //HANDLE_ERROR( cudaFree(global_stuff->mean_Vdip_dev) ); // result of integral with Vdip operator in positions' representation
-  cudaFree(global_stuff->mean_Vext_dev); // result of integral with Vext operator in positions' representation
-  //HANDLE_ERROR( cudaFree(global_stuff->mean_Vcon_dev) ); // result of integral with Vcon operator in positions' representation
-  cudaFree(global_stuff->norm_dev ); //
   
   
   // clear memory
   free(threads);
   
   
-  free(global_stuff->streams);
+  free(streams);
   free(global_stuff);
   
   

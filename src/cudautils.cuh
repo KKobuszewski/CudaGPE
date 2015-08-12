@@ -75,6 +75,23 @@ static inline void CheckCufft( cufftResult cufft_res,
                          int line ) {
     if (cufft_res != CUFFT_SUCCESS) {
         printf( "CUFFT error in %s at line %d\n", file, line );
+        
+        if (cufft_res == CUFFT_INVALID_PLAN) {printf("CUFFT_INVALID_PLAN\n");}
+        else if (cufft_res == CUFFT_ALLOC_FAILED) {printf("CUFFT_ALLOC_FAILED\n");}
+        else if (cufft_res == CUFFT_INVALID_TYPE) {printf("CUFFT_INVALID_TYPE\n");}
+        else if (cufft_res == CUFFT_INVALID_VALUE) {printf("CUFFT_INVALID_VALUE\n");}
+        else if (cufft_res == CUFFT_INTERNAL_ERROR) {printf("CUFFT_INTERNAL_ERROR\n");}
+        else if (cufft_res == CUFFT_EXEC_FAILED) {printf("CUFFT_EXEC_FAILED\n");}
+        else if (cufft_res == CUFFT_SETUP_FAILED) {printf("CUFFT_SETUP_FAILED\n");}
+        else if (cufft_res == CUFFT_INVALID_SIZE) {printf("CUFFT_INVALID_SIZE\n");}
+        else if (cufft_res == CUFFT_UNALIGNED_DATA) {printf("CUFFT_UNALIGNED_DATA\n");}
+        else if (cufft_res == CUFFT_INCOMPLETE_PARAMETER_LIST) {printf("INCOMPLETE_PARAMETER_LIST\n");}
+        else if (cufft_res == CUFFT_INVALID_DEVICE) {printf("CUFFT_INVALID_DEVICE\n");}
+        else if (cufft_res == CUFFT_NO_WORKSPACE) {printf("CUFFT_NO_WORKSPACE\n");}
+        else if (cufft_res == CUFFT_NOT_IMPLEMENTED) {printf("CUFFT_NOT_IMPLEMENTED\n");}
+        else if (cufft_res == CUFFT_PARSE_ERROR) {printf("PARSE_ERROR\n");}
+        else if (cufft_res == CUFFT_LICENSE_ERROR) {printf("CUFFT_LICENSE_ERROR\n");}
+        
         exit( EXIT_FAILURE );
     }
 } 

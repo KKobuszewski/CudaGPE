@@ -3,8 +3,8 @@ CC        = g++
 #-std=c99
 CFLAGS    =  -Wall -Wundef -m64 -march=native -O3 -msse3 -ffast-math -fassociative-math -ftree-vectorizer-verbose=1
 CINC      = -I /usr/local/cuda/include -I /usr/local/cuda-7.0/samples/common/inc
-CLIBS     = -lfftw3 -lm -lpthread -L /usr/local/cuda/lib 
-
+CLIBS     = -lm -lpthread -L /usr/local/cuda/lib64 
+#-lfftw3 
 NVCC      = /usr/local/cuda-7.0/bin/nvcc
 LD        = $(NVCC)
 NVCCPARMS += -g -G -Xptxas="-v" -arch=sm_52 -m64 -O3 -lm
@@ -19,9 +19,10 @@ NVCCINC=-I $(CUDASDK)/common/inc
 CULIBS    = -lcufft -lcublas
 
 # one must define evolution type: EVOLUTION = REAL_TIME/IMAG_TIME (these values are predefined macros in code)
-DEF       = -D REAL_TIME
-#-D IMAG_TIME 
-#-D DEBUG
+DEF       = -DV_EXT
+# -DCONTACT
+# -DDIPOLAR
+# -DLOOSES
 
 PROG=../bin/gpe
 PROG2=../bin/gpe_debug
@@ -32,7 +33,10 @@ OBJS =  ../bin/main.o ../bin/fileIO.o ../bin/cudautils.o ../bin/simulation.o ../
 #c: main.c
 #	gcc -o $@ main.c $(CLIBS) $(CFLAGS)
 
-all: $(PROG)
+all: $(PROG) $(PROG2) $(PROG_IMAG)
+
+real: DEF += -D REAL_TIME
+real: $(PROG)
        
 $(PROG):	$(OBJS)
 		$(LD) -o $@ $(OBJS) $(CULIBS) $(CLIBS) -arch=sm_52
@@ -40,7 +44,7 @@ $(PROG):	$(OBJS)
 
 
 
-debug: DEF += -DDEBUG
+debug: DEF += -DDEBUG -D REAL_TIME
 debug: $(PROG2)
        
 $(PROG2):	$(OBJS)
@@ -48,7 +52,7 @@ $(PROG2):	$(OBJS)
        
 
 
-
+imag: DEF += -D IMAG_TIME
 imag: $(PROG_IMAG)
        
 $(PROG_IMAG):	$(OBJS)

@@ -24,7 +24,11 @@
  * ************************************************************************************************************************************* */
 
 #define SIGMA ( XMAX*sqrt(2./(3.14159265358979323846*NX)) )
-#define OFFSET_X ((double) 0.0)
+#ifndef IMAG_TIME
+    #define OFFSET_X ((double) 0.0)
+#else
+    #define OFFSET_X ((double) 0.05)
+#endif
 __global__ void ker_gauss_1d(cuDoubleComplex* data) {
   // get the index of thread
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
@@ -120,12 +124,24 @@ __global__ void ker_print_Z(cuDoubleComplex* arr_dev)
  * 																	 *
  * ************************************************************************************************************************************* */
 
+__global__ void ker_modulus_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_arr_dev) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  while (ii < NX) {
+    //double_arr_dev = cuCabs(complex_arr_dev[ii])*cuCabs(complex_arr_dev[ii]);
+    double_arr_dev[ii] = sqrt( cuCreal(complex_arr_dev[ii])*cuCreal(complex_arr_dev[ii]) + cuCimag(complex_arr_dev[ii])*cuCimag(complex_arr_dev[ii]) );
+    ii += blockDim.x * gridDim.x;
+  }
+  
+}
+
 __global__ void ker_modulus_pow2_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_arr_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
-  if (ii < NX*NY*NZ) {
+  while (ii < NX) {
     //double_arr_dev = cuCabs(complex_arr_dev[ii])*cuCabs(complex_arr_dev[ii]);
     double_arr_dev[ii] = cuCreal(complex_arr_dev[ii])*cuCreal(complex_arr_dev[ii]) + cuCimag(complex_arr_dev[ii])*cuCimag(complex_arr_dev[ii]);
+    ii += blockDim.x * gridDim.x;
   }
   
 }
@@ -277,6 +293,22 @@ __global__ void ker_operator_mean_1d( dev_funcZ_ptr_t func, cuDoubleComplex* wf,
   //if (ii == 0) *mean *= sqrt(DX);
     
 }
+
+__global__ void ker_propagate_Vcon(cuDoubleComplex* wf, double* density) {
+  extern __shared__ double factor[];
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  uint16_t tid = threadIdx.x;
+  
+  while (ii < NX*NY*NZ) {
+    
+    factor[tid] = G_CONTACT*density[ii]*NX*NY*NZ;// gN|\psi|^2
+    
+    // WYTESTOWAC CZY SZYBSZE NIE BEDZIE OBLICZANIE PROPAGATORA
+    wf[ii] = cuCmul(  wf[ii], make_cuDoubleComplex(cos(factor[tid]*DT),-sin(factor[tid]*DT))  );
+    ii += blockDim.x * gridDim.x;
+  }
+}
+
 
 
 /* ************************************************************************************************************************************* *

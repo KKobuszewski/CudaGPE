@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -14,6 +15,103 @@
 
 const uint8_t filename_str_lenght = 128;
 
+const char* files_names[] = {"simulation_parametrs","statistics","wf_frames","propagators"};
+
+/*
+ * In case to have transparent code - open files in special function and store pointers to the files in an array
+ * PRZEMYSLEC ILE PLIKOW POTRZEBA -> WAVEFUNCTION, WCZYTYWANIE, BACKUP, ENERGIA, PRZEKROJE
+ * CZYTAC/ZAPISYWAC WAVEFUNCTION DO PLIKOW BINARNYCH ZA POMOCA MMAP, A TIMING JAKOS INACZEJ (DO .TXT LUB nvprof UZYWAC)
+ */
+struct_file** open_struct_files(const uint8_t num_files = 5) {
+  
+  char str_date[17];
+  char dirname[256];
+  
+  struct_file** files = (struct_file**) malloc( num_files*sizeof(struct_file*) );
+  for (uint8_t ii=0; ii < num_files; ii++) {
+      files[ii] = (struct_file*) malloc( sizeof(struct_file) );
+  }
+  
+  // files are going to be saved in special directory containing information of used potentials and date of simulation
+  /*
+   * TODO:  - some more information about simulation <- maybe .txt file with some more details
+   *        - better way to preapre the name (str concat)
+   * 
+   */
+  
+  time_t t = time(NULL);
+  strftime(str_date, sizeof(str_date), "%Y-%m-%d_%H:%M", localtime(&t));  
+#ifdef V_EXT
+    #ifdef V_CON
+    
+        #ifdef V_DIP
+        // V_EXT, V_CON, V_DIP are defined
+        sprintf( dirname,"../data_TVextVcVd_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+        #else
+        // V_EXT, V_CON are defined
+        sprintf( dirname,"../data_TVextVc_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+        #endif
+    
+    #else
+        // V_EXT is defined
+        sprintf( dirname,"../data_TVext_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+    #endif
+#else
+    #ifdef V_CON
+    
+        #ifdef V_DIP
+        // V_CON, V_DIP are defined
+        sprintf( dirname,"../data_TVcVd_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+        #else
+        // V_CON is defined
+        sprintf( dirname,"../data_TVc_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+        #endif
+    
+    #else
+        // no potentials, internal or external, are defined
+        sprintf( dirname,"../data_T_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+    #endif
+#endif
+  
+  // creating directory for simulation files
+  struct stat st = {0};
+  if (stat(dirname, &st) == -1) {
+    mkdir(dirname, 0777);
+  }
+  printf("\nsaving data in directory: %s\n",dirname);
+  
+  //char* filenames[filename_str_lenght] = (char**) malloc( sizeof(char*)*num_files);
+  for (uint8_t ii=0; ii<num_files; ii++) {
+      
+      if ( (ii == WF_FRAMES_FILE) ) {   // here open files for binary operations
+          sprintf( (files[ii])->filename,"%s/%s_dim%d_N%d.bin", dirname, files_names[ii], DIM, NX*NY*NZ );
+          files[ii]->data = fopen(files[ii]->filename,"wb");
+          files[ii]->mode = BINARY;
+          //files[ii]->permissions =
+          printf("(binary mode) ");
+      }
+      else {
+          sprintf( (files[ii])->filename,"%s/%s_dim%d_N%d.txt", dirname, files_names[ii], DIM, NX*NY*NZ );
+          files[ii]->data = fopen(files[ii]->filename,"w");
+          files[ii]->mode = TEXT;
+          
+          printf("(text mode) ");
+      }
+      
+      if 
+          (!files[ii]->data) printf("Error opening file %s!\n",files[ii]->filename);
+      else 
+          printf("%s save in: %s\n", files_names[ii],files[ii]->filename);
+  }
+  
+  // linking with struct for global variables
+  global_stuff->num_files = num_files;
+  
+  return files;
+}
+
+
+
 /*
  * In case to have transparent code - open files in special function and store pointers to the files in an array
  * PRZEMYSLEC ILE PLIKOW POTRZEBA -> WAVEFUNCTION, WCZYTYWANIE, BACKUP, ENERGIA, PRZEKROJE
@@ -22,8 +120,58 @@ const uint8_t filename_str_lenght = 128;
 FILE** open_files() {
   
   const uint8_t num_files = 6;
+  char str_date[17];
+  char dirname[256];
   
   FILE** files = (FILE**) malloc( num_files*sizeof(FILE*) );
+  
+  // files are going to be saved in special directory containing information of used potentials and date of simulation
+  /*
+   * TODO:  - some more information about simulation <- maybe .txt file with some more details
+   *        - better way to preapre the name (str concat)
+   * 
+   */
+  
+  time_t t = time(NULL);
+  strftime(str_date, sizeof(str_date), "%Y-%m-%d_%H:%M", localtime(&t));  
+#ifdef V_EXT
+    #ifdef V_CON
+    
+        #ifdef V_DIP
+        // V_EXT, V_CON, V_DIP are defined
+        sprintf( dirname,"../data_TVextVcVd_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+        #else
+        // V_EXT, V_CON are defined
+        sprintf( dirname,"../data_TVextVc_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+        #endif
+    
+    #else
+        // V_EXT is defined
+        sprintf( dirname,"../data_TVext_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+    #endif
+#else
+    #ifdef V_CON
+    
+        #ifdef V_DIP
+        // V_CON, V_DIP are defined
+        sprintf( dirname,"../data_TVcVd_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+        #else
+        // V_CON is defined
+        sprintf( dirname,"../data_TVc_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+        #endif
+    
+    #else
+        // no potentials, internal or external, are defined
+        sprintf( dirname,"../data_T_dim%d_N%d_%s", DIM, NX*NY*NZ, str_date );
+    #endif
+#endif
+  
+  // creating directory for simulation files
+  struct stat st = {0};
+  if (stat(dirname, &st) == -1) {
+    mkdir(dirname, 0777);
+  }
+  printf("saving data in directory: %s",dirname);
   
   //char wf_filename[filename_str_lenght];
   //FILE* wf_file = NULL;
@@ -40,7 +188,7 @@ FILE** open_files() {
   files[num_files-1] = backup_file; // enum -> BACKUP_FILE
   
   
-  // file to save before FFT
+  // file to save before starting algorithm
   char init_filename[filename_str_lenght];
   FILE* init_file = NULL;
   sprintf(init_filename,"./init_dim%d_N%d.txt", DIM, NX*NY*NZ);
@@ -92,15 +240,6 @@ FILE** open_files() {
   files[4] = T_file;
   
   
-  
-  /*
-  for (uint8_t ii=0; ii< num_files; ii++) {
-    //files[ii] = fopen / mmap
-    
-  }
-  */
-  
-  
   // linking with struct for global variables <- wlasciwie to tylko komplikuje, ale chociaz wiadomo co jest global, a co nie ...
   global_stuff->files = files;
   global_stuff->num_files = num_files;
@@ -119,6 +258,17 @@ void close_files(FILE** files, const uint8_t num_files) {
     if (files[ii]) fclose(files[ii]);
 }
 
+/*
+ * Closes files form array of pointers to files.
+ * FILE** files - array of pointers to files
+ *  const uint8_t num_files - number of files in the array
+ */
+void close_struct_files(struct_file** files, const uint8_t num_files) {
+  for (uint8_t ii = 0; ii< num_files; ii++)
+    if ( (files[ii])->data ) fclose( (files[ii])->data );
+  
+  free( files );
+}
 
 /*
  * Creates memory map from file. It can be used for reading/writing from big files, so for wavefunctions.
@@ -132,7 +282,7 @@ int mmap_create(char* filepath, void** map, size_t filesize, int protect, int fl
   
   int fd;
   
-  fd = open(filepath, O_RDWR);
+  fd = open(filepath, O_RDWR|O_CREAT, S_IRUSR | S_IRGRP | S_IROTH);
   if (fd == -1) {
     perror("Error opening file for reading");
     exit(EXIT_FAILURE);
@@ -154,7 +304,7 @@ int mmap_create(char* filepath, void** map, size_t filesize, int protect, int fl
     /* 
      * Stretch the file size to the size of the (mmapped) array of ints
      */
-    result = lseek(fd, filesize-1, SEEK_SET);
+    long long int result = lseek(fd, filesize-1, SEEK_SET);
     if (result == -1) {
 	close(fd);
 	perror("Error calling lseek() to 'stretch' the file");
@@ -165,7 +315,7 @@ int mmap_create(char* filepath, void** map, size_t filesize, int protect, int fl
      * have the file actually have the new size.
      * Just writing an empty string at the current file position will do.
      *
-     * Note:
+     * Note:, const uint8_t num_files
      *  - The current position in the file is at the end of the stretched 
      *    file due to the call to lseek().
      *  - An empty string is actually a single '\0' character, so a zero-byte

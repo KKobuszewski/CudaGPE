@@ -9,8 +9,12 @@
 #include <cuComplex.h>
 #include <cufft.h>
 
+#include "fileIO.h"
+
+
+
 // simulation parameters
-#define NX ( (uint32_t) 2048 ) // type should be large enough to collect NX*NY*NZ
+#define NX ( (uint32_t) 1024 ) // type should be large enough to collect NX*NY*NZ
 #define NY ( (uint32_t) 1 )
 #define NZ ( (uint32_t) 1 )
 #define DIM 1
@@ -36,6 +40,8 @@
 #define KxMAX ((double) 3.14159265358979323846/(DX))
 #define KxMIN ((double) -3.14159265358979323846/(DX))
 #define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )
+
+#define G_CONTACT ((double) 1. )
 
 
 
@@ -118,18 +124,23 @@ typedef struct Globals {
   
 } Globals;
 
+
+// global variables declarated in main.c
 extern Globals* global_stuff;
-extern pthread_barrier_t barrier;// <- this barrier synchronizes only local threads that manage algorith and device
+extern pthread_barrier_t barrier;// <- this barrier synchronizes only local threads that manage algorithm and device
 extern pthread_barrier_t barrier_global;
 extern const uint8_t num_streams;
+extern cudaStream_t* streams;
 extern double complex* wf_mmap;
+extern double complex* init_wf_mmap;
+extern struct_file** files;
 const uint8_t num_plans = 4;
 
-// names
-enum thread_id {SIMULATION_THRD, HELPER_THRD}; // enums in header!
+// enums
+enum thread_id {SIMULATION_THRD, HELPER_THRD};
 enum stream_id {SIMULATION_STREAM, HELPER_STREAM};
-
 enum plan_id {FORWARD_PSI, BACKWARD_PSI, FORWARD_DIPOLAR, BACKWARD_DIPOLAR};
+enum file_id {STATS_FILE = 1, WF_FRAMES_FILE, PROPAGATORS_FILE};
 
 
 

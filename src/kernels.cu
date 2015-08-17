@@ -25,9 +25,9 @@
 
 #define SIGMA ( XMAX*sqrt(2./(3.14159265358979323846*NX)) )
 #ifndef IMAG_TIME
-    #define OFFSET_X ((double) 0.0)
+    #define OFFSET_X ((double) 0.1)
 #else
-    #define OFFSET_X ((double) 0.05)
+    #define OFFSET_X ((double) 0.0)
 #endif
 __global__ void ker_gauss_1d(cuDoubleComplex* data) {
   // get the index of thread
@@ -138,9 +138,13 @@ __global__ void ker_modulus_wf_1d(cuDoubleComplex* complex_arr_dev, double* doub
 __global__ void ker_modulus_pow2_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_arr_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
+#ifdef DEBUG
+  if(ii%4 == 0) printf("x:%.15f\twf:%15f + %15fj\tRe^2:%15f\tIm^2:%15f\n", XMIN + ii*DX, complex_arr_dev[ii].x, complex_arr_dev[ii].y, complex_arr_dev[ii].x*complex_arr_dev[ii].x, complex_arr_dev[ii].y*complex_arr_dev[ii].y);
+#endif
+  
   while (ii < NX) {
     //double_arr_dev = cuCabs(complex_arr_dev[ii])*cuCabs(complex_arr_dev[ii]);
-    double_arr_dev[ii] = cuCreal(complex_arr_dev[ii])*cuCreal(complex_arr_dev[ii]) + cuCimag(complex_arr_dev[ii])*cuCimag(complex_arr_dev[ii]);
+    double_arr_dev[ii] = complex_arr_dev[ii].x*complex_arr_dev[ii].x + complex_arr_dev[ii].y*complex_arr_dev[ii].y;
     ii += blockDim.x * gridDim.x;
   }
   
@@ -294,21 +298,51 @@ __global__ void ker_operator_mean_1d( dev_funcZ_ptr_t func, cuDoubleComplex* wf,
     
 }
 
-__global__ void ker_propagate_Vcon(cuDoubleComplex* wf, double* density) {
-  extern __shared__ double factor[];
+
+/*
+ * PROPAGATION VIA CONTACT INTERACTIONS
+ */
+__global__ void ker_propagate_Vcon_1d(cuDoubleComplex* wf, double* density) {
+  //extern __shared__ double factor[];
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
-  uint16_t tid = threadIdx.x;
+  //uint16_t tid = threadIdx.x;
   
   while (ii < NX*NY*NZ) {
     
-    factor[tid] = G_CONTACT*density[ii]*NX*NY*NZ;// gN|\psi|^2
+    //factor[tid] = G_CONTACT*density[ii]*NX*NY*NZ;// gN|\psi|^2
     
+#ifdef DEBUG
+    if (ii%4 == 0) printf("x: %.15f\twavefunction before progration Vcon: %.15f + %.15fj\tdensity: %.15f\n", XMIN + ii*DX,cuCreal(wf[ii]),cuCimag(wf[ii]),density[ii]);
+    __syncthreads();
+#endif
     // WYTESTOWAC CZY SZYBSZE NIE BEDZIE OBLICZANIE PROPAGATORA
-    wf[ii] = cuCmul(  wf[ii], make_cuDoubleComplex(cos(factor[tid]*DT),-sin(factor[tid]*DT))  );
+#ifdef REAL_TIME
+    wf[ii] = cuCmul(  wf[ii], make_cuDoubleComplex(  cos( G_CONTACT*density[ii]*DT ),-sin( G_CONTACT*density[ii]*DT )  )  );
+    //wf[ii] = cuCmul(  wf[ii], make_cuDoubleComplex(cos(factor[tid]*DT),-sin(factor[tid]*DT))  );
+#endif
+#ifdef IMAG_TIME
+    wf[ii] = cuCmul( wf[ii], exp(-G_CONTACT*density[ii]) );
+#endif
+#ifdef DEBUG
+    if (ii < 10) printf("wavefunction after progration Vcon: %.15f + %.15fj\n",cuCreal(wf[ii]),cuCimag(wf[ii]));
+#endif
+    
     ii += blockDim.x * gridDim.x;
   }
 }
-
+/*
+ * COUNTING CONTACT INTERACTIONS ENERGY IN PLACE!!! <- think if it is possible?
+ * !!! must copy wafeunction before !!!
+ */
+__global__ void ker_Vcon_wf(cuDoubleComplex* wf_dev, double* density) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  while (ii < NX*NY*NZ) {
+    wf_dev[ii] = cuCmul(wf_dev[ii], G_CONTACT*density[ii] );
+    ii += blockDim.x * gridDim.x;
+  }
+  
+}
 
 
 /* ************************************************************************************************************************************* *
@@ -317,6 +351,9 @@ __global__ void ker_propagate_Vcon(cuDoubleComplex* wf, double* density) {
  * 																	 *
  * ************************************************************************************************************************************* */
 
+/*
+ * Element-wise vector multiplication
+ */
 __global__ void ker_propagate(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* propagator_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
@@ -348,6 +385,23 @@ __global__ void ker_Vext_wf(cuDoubleComplex* wf_dev, cuDoubleComplex* result_dev
   
 }
 
+
+/* ************************************************************************************************************************************* *
+ * 																	 *
+ * 							KERNELS TYPE ZDZ									 *
+ * 																	 *
+ * ************************************************************************************************************************************* */
+
+
+__global__ void ker_Vcon_wf(cuDoubleComplex* wf_dev, double* density, cuDoubleComplex* result_dev) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  while (ii < NX*NY*NZ) {
+    result_dev[ii] = cuCmul(wf_dev[ii], G_CONTACT*density[ii] );
+    ii += blockDim.x * gridDim.x;
+  }
+  
+}
 
 
 // cross sections of wavefunction

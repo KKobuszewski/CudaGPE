@@ -241,7 +241,7 @@ FILE** open_files() {
   
   
   // linking with struct for global variables <- wlasciwie to tylko komplikuje, ale chociaz wiadomo co jest global, a co nie ...
-  global_stuff->files = files;
+  //global_stuff->files = files;
   global_stuff->num_files = num_files;
   
   return files;

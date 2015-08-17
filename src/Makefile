@@ -19,10 +19,10 @@ NVCCINC=-I $(CUDASDK)/common/inc
 CULIBS    = -lcufft -lcublas
 
 # one must define evolution type: EVOLUTION = REAL_TIME/IMAG_TIME (these values are predefined macros in code)
-DEF       = -DV_EXT
-# -DCONTACT
-# -DDIPOLAR
+DEF       = -DV_EXT -DV_CON
+# -DV_DIP
 # -DLOOSES
+# ...
 
 PROG=../bin/gpe
 PROG2=../bin/gpe_debug

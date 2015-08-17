@@ -30,7 +30,7 @@
 #endif
 
 // TIMESTEP LENGTH
-#define DT ((double) 1e-07)
+#define DT ((double) 1e-6)
 
 // scalling the grid <- poprawic by nie bylo obliczen !!!
 #define XMAX ((double) .5)
@@ -42,6 +42,7 @@
 #define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )
 
 #define G_CONTACT ((double) 1. )
+#define G_DIPOLAR ((double) 1. )
 
 
 
@@ -80,7 +81,6 @@ typedef struct Globals {
   
   // files
   char** filenames;
-  FILE** files;
   uint8_t num_files;
   
   // memory maps
@@ -133,14 +133,14 @@ extern const uint8_t num_streams;
 extern cudaStream_t* streams;
 extern double complex* wf_mmap;
 extern double complex* init_wf_mmap;
-extern struct_file** files;
+extern struct_file** files; // declared in main.c
 const uint8_t num_plans = 4;
 
 // enums
 enum thread_id {SIMULATION_THRD, HELPER_THRD};
 enum stream_id {SIMULATION_STREAM, HELPER_STREAM};
 enum plan_id {FORWARD_PSI, BACKWARD_PSI, FORWARD_DIPOLAR, BACKWARD_DIPOLAR};
-enum file_id {STATS_FILE = 1, WF_FRAMES_FILE, PROPAGATORS_FILE};
+enum file_id {SIM_PARAMS_FILE, STATS_FILE, WF_FRAMES_FILE, PROPAGATORS_FILE};
 
 
 

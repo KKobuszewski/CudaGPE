@@ -44,9 +44,10 @@ __global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* n
 __global__ void ker_normalize_1d(cufftDoubleComplex* data, double* norm);
 
 __global__ void ker_energy_T_1d(cuDoubleComplex* wf_k, double* T_mean);
-__global__ void ker_energy_Vext_1d(cuDoubleComplex* wf_k, double* Vext_mean);
+__global__ void ker_energy_Vext_1d(cuDoubleComplex* wf, double* Vext_mean);
 
 
+__global__ void ker_propagate_Vcon_1d(cuDoubleComplex* wf, double* density);
 
 
 
@@ -59,6 +60,15 @@ __global__ void ker_energy_Vext_1d(cuDoubleComplex* wf_k, double* Vext_mean);
 __global__ void ker_propagate(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* popagator_T_dev);
 
 
+
+/* ************************************************************************************************************************************* *
+ * 																	 *
+ * 							KERNELS TYPE ZDZ									 *
+ * 																	 *
+ * ************************************************************************************************************************************* */
+
+
+__global__ void ker_Vcon_wf(cuDoubleComplex* wf_dev, double* density, cuDoubleComplex* result_dev);
 
 
 
@@ -156,8 +166,8 @@ static inline void call_kernel_Z_1d(void(*kernel)(cuDoubleComplex*), cuDoubleCom
 #endif
       (*kernel)<<<dimGrid, dimBlock, shared_mem, stream>>>(data);
     }
-    HANDLE_ERROR( cudaGetLastError() );
     
+        
     // przemyslec jak to zreobic najlepiej
     //cudaStreamSynchronize(stream);
 
@@ -251,6 +261,57 @@ static inline void call_kernel_ZZ_1d( void(*kernel)(cuDoubleComplex*, cuDoubleCo
 
 }
 
+
+/*
+ * Special function to call kernels - more transparent code
+ * 
+ * TUTAJ BEDZIETRZEBA ZROBIC KILKA FUNKCJI DLA ROZNYCH RODZAJOW ARGUMENTOW ALBO POROBIC WSKAZNIKI NA TABLICE GLOBALNIE WIDOCZNE NA DEVICE
+ * PIERWSZE ROZWIAZANIE MA TA ZALETE, ZE W ZALEZNOSCI OD ARGUMENTOW FUNKCJI MOZNA ZMIENIC JAKIES PARAMETRY WYWOLANIA FUNCKJI
+ * POPRAWIC JESZCZE TRZEBA TO BY nie bylo else/if
+ */
+static inline void call_kernel_ZDZ_1d( void(*kernel)(cuDoubleComplex*, double*, cuDoubleComplex*), cuDoubleComplex* complex_data1, double* double_data1, cuDoubleComplex* complex_data2, cudaStream_t stream, uint32_t shared_mem=0, const int Nob=-1, const int BlkSz=-1) 
+{
+    
+    if ( (Nob != -1) || (BlkSz != -1) ) {
+      printf("using function parameters when invoking kernel!\n");
+      (*kernel)<<<Nob, BlkSz, shared_mem, stream>>>(complex_data1, double_data1, complex_data2);
+    }
+    else
+    {
+      uint64_t threadsPerBlock;
+      if (NX*NY*NZ >= 33554432) //     <-  CHYBA TRZEBA TO ZAŁATWIĆ MAKREM NA POCZATKU PROGRAMU 
+	threadsPerBlock = 1024;
+      else if (NX*NY*NZ >= 33554432/2)
+	threadsPerBlock = 512;
+      else if (NX*NY*NZ >= 33554432/4)
+	threadsPerBlock = 256;
+      else 
+	threadsPerBlock = 128; // seems max grid size is ( 32768, ?, ? ) <- ????
+      
+      dim3 dimBlock(threadsPerBlock,1,1);
+      dim3 dimGrid( (NX*NY*NZ + threadsPerBlock - 1)/threadsPerBlock, 1, 1 ); // (numElements + threadsPerBlock - 1) / threadsPerBlock
+      if (shared_mem > 0) shared_mem /= (dimGrid.x + dimGrid.y + dimGrid.z - 2);
+#ifdef DEBUG
+      printf("\nKernel invocation:\n");
+      printf("threads per block: %lu\n", threadsPerBlock);
+      printf("blocks: %lu\n",(NX*NY*NZ + threadsPerBlock - 1)/threadsPerBlock);
+      printf("pointer to function: %p\n",kernel);
+#endif
+      (*kernel)<<<dimGrid, dimBlock, shared_mem, stream>>>(complex_data1, double_data1, complex_data2);
+    }
+    HANDLE_ERROR( cudaGetLastError() );
+    
+    // przemyslec jak to zreobic najlepiej
+    //cudaStreamSynchronize(stream); // <- czy to tutaj w ogole moze byc??? przeciez wtedy nie da sie wykonac kerneli asynchronicznie w jednym watku
+
+}
+
+
+
+
+
+
+
 /*
  * Special function to call kernels - more transparent code
  * 
@@ -301,5 +362,11 @@ static inline void call_kernel_operatorZD_1d( void(*kernel)(dev_funcZ_ptr_t, cuD
     //cudaStreamSynchronize(stream); // <- czy to tutaj w ogole moze byc??? przeciez wtedy nie da sie wykonac kerneli asynchronicznie w jednym watku
 
 }
+
+
+
+
+
+
 
 #endif

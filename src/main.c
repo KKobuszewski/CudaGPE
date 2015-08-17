@@ -18,13 +18,6 @@
 #include "simulation.h"
 #include "fileIO.h"
 
-// sturctures definitions
-
-/*
- * This structure provides general information and required data pointers to be shared between pthreads.
- */
-
-
 
 // global variables declarations
 Globals* global_stuff;
@@ -71,7 +64,7 @@ void sig_handler(int signo)
   // close files
   mmap_destroy(global_stuff->init_wf_fd, init_wf_mmap, NX*NY*NZ * sizeof(double complex));
   mmap_destroy(global_stuff->wf_save_fd, wf_mmap, NX*NY*NZ * sizeof(double complex));
-  close_files(global_stuff->files, global_stuff->num_files);
+  close_struct_files(files, global_stuff->num_files);
   
   cudaThreadExit();
   cudaDeviceReset();
@@ -174,16 +167,19 @@ int main(int argc, char* argv[]) {
 #endif
       
     }
+    
+    /*
+     * TODO:
+     * specify directory to save file!
+     */
+    // else if (ii == 2) {
+    
     // smth else ...
     // else if (ii == 2) {
     
     printf("\n");
   }
-  
-  // open files
-  open_files();
-  
-  
+    
   // create streams (CUDA)
   streams = (cudaStream_t*) malloc( (size_t) sizeof(cudaStream_t)*num_streams );
   
@@ -245,7 +241,7 @@ int main(int argc, char* argv[]) {
   // close files
   mmap_destroy(global_stuff->init_wf_fd, init_wf_mmap, NX*NY*NZ * sizeof(double complex));
   mmap_destroy(global_stuff->wf_save_fd, wf_mmap, NX*NY*NZ * sizeof(double complex));
-  close_files(global_stuff->files, global_stuff->num_files);
+  //close_files(global_stuff->files, global_stuff->num_files);
   close_struct_files(files, global_stuff->num_files);
   
   

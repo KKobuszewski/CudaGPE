@@ -93,8 +93,8 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
       Vcon = data[:,5]
       Vdip = data[:,6]
 
-      virial = 2*T - 2*Vext
-      Etot = T + Vext
+      virial = 2*T - 2*Vext + Vcon
+      Etot = T + Vext + Vcon
       """
       print('norm change',np.max(n) - np.min(n),'per',np.max(t),'steps (',(np.max(n) - np.min(n))/np.max(t),')')
       print('kinetic energy  mean:',np.mean(T),'  min:',np.min(T),'  std. dev:',np.std(T))
@@ -114,6 +114,7 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
               'norm change: {} per {} steps ({} per step)\n\n'.format(np.max(n) - np.min(n),np.max(t),(np.max(n) - np.min(n))/np.max(t)),
               'kinetic energy\nmean: {}   min:{}   std. dev.:{}\n\n'.format(np.mean(T),np.min(T),np.std(T)),
               'ext. pot. energy\nmean: {}   min:{}   std. dev.:{}\n\n'.format(np.mean(Vext),np.min(Vext),np.std(Vext)),
+              'contact interaction energy\nmean: {}   min:{}   std. dev.:{}\n\n'.format(np.mean(Vcon),np.min(Vcon),np.std(Vcon)),
               'total energy\nmean: {}   min:{}   std. dev.:{}\n\n'.format(np.mean(Etot),np.min(Etot),np.std(Etot)),
               '|virial|\nmean: {}   max:{}   std. dev.:{}\n\n'.format(np.mean(virial),np.max(np.abs(virial)),np.std(virial))
               )
@@ -126,8 +127,9 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
               'omega: {}\n'.format(omega),
               'statistics:',
               'norm change: {} per {} steps ({} per step)\n\n'.format(np.max(n) - np.min(n),np.max(t),(np.max(n) - np.min(n))/np.max(t)),
-              'kinetic energy\nmin:{}\n\n'.format(np.min(T)),
-              'ext. pot. energy\nmin:{}\n\n'.format(np.min(Vext)),
+              'kinetic energy\nmin: {}   last: {}\n\n'.format(np.min(T),T[-1]),
+              'ext. pot. energy\nmin: {}   last: {}\n\n'.format(np.min(Vext),Vext[-1]),
+              'contact interaction energy\nmin: {}   last: {}\n\n'.format(np.min(Vcon),Vcon[-1]),
               'total energy\n\nmin:{}\n\n'.format(np.min(Etot)),
               '|virial|\nmin:{}\n\n'.format(np.min(np.abs(virial))),
               'chemical potential\nmin:{}\n\n'.format(np.min(mu))
@@ -152,15 +154,16 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
           fig = plt.figure(figsize=(8,8),dpi=1000)
           plt.grid(True)
           if evolution_type == 'imaginary time':
-            plt.xscale('log')
+            plt.xscale('symlog')
+            plt.xlim([0,np.max(t)])
             plt.yscale('log')
           plt.title('mean values of different energy operators')
           plt.xlabel('timesteps')
           plt.ylabel('energy')
-          plt.ylim([0.99*min( np.min(T),np.min(Vext) ), 1.01*max( np.max(T),np.max(Vext) )])
+          plt.ylim([0.99*min( np.min(T),np.min(Vext), np.min(Vcon) ), 1.01*max( np.max(T),np.max(Vext) )])
           plt.plot(t,T,label='T')
           plt.plot(t,Vext,label=r'$V_{ext}$')
-          #plt.plot(t,Vcon,label=r'$V_{con}$')
+          plt.plot(t,Vcon,label=r'$V_{con}$')
           #plt.plot(t,Vdip,label=r'$V_{dip}$')
           plt.plot(t,(T+Vext+Vcon+Vdip)/2,label='srednia')
           plt.legend()
@@ -176,7 +179,8 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
           if evolution_type == 'imaginary time':
             fig = plt.figure(figsize=(8,8),dpi=1000)
             plt.grid(True)
-            plt.xscale('log')
+            plt.xscale('symlog')
+            plt.xlim([0,np.max(t)])
             plt.yscale('log')
             plt.ylim([np.min(mu)*0.99,np.max(mu)*1.01])
             plt.title('chemical potential')
@@ -191,7 +195,8 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
           fig = plt.figure(figsize=(8,8),dpi=1000)
           plt.grid(True)
           if evolution_type == 'imaginary time':
-            plt.xscale('log')
+            plt.xscale('symlog')
+            plt.xlim([0,np.max(t)])
             plt.yscale('log')
           plt.title('virial and changes of total energy')
           plt.ylim([0.99*min( np.min(virial),np.min(Etot - np.min(Etot)) ), 1.01*max( np.max(virial),np.max(Etot - np.min(Etot)) )])
@@ -263,6 +268,8 @@ def process_frames(directory, evolution_type, dt,timesteps,frames, xmin, xmax, d
             plt.xlim([xmin,xmax])
             plt.plot(x,np.abs(data[:Nx]),label='initial $|\psi|^2$$')
             plt.plot(x,np.abs(data[Nx*ii:Nx*(ii+1)]),label='frame {}'.format(ii+1))
+            if ii > 0 :
+                plt.plot(x,np.abs(data[Nx*(ii-1):Nx*(ii)]),label='frame {}'.format(ii))
             plt.legend(loc='upper left')
             plt.tight_layout()
             pdf.savefig(fig)

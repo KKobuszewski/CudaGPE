@@ -10,7 +10,12 @@
 #include <cublas_v2.h>
 #include <cuda.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include "global.h"
+#include "dipolar.h"
 #include "simulation.cuh"
 #include "cudautils.cuh"
 #include "kernels.cuh"
@@ -60,6 +65,8 @@ cufftHandle* cufft_plans;
  * 																	 *
  * ************************************************************************************************************************************* */
 
+
+void free_device();
 void save_stats(uint64_t step_index);
 void save_simulation_params();
 
@@ -86,7 +93,10 @@ static inline double chemical_potential_ite(double norm) {
 }
 
 
-
+// interaction potential
+static inline double interaction_potential(uint32_t ii) {
+    return Vdd(kx(ii),1.,1.) + G_CONTACT; // dipolar + contact interactions
+}
 
 
 
@@ -96,10 +106,12 @@ static inline double chemical_potential_ite(double norm) {
  * 																	 *
  * ************************************************************************************************************************************* */
 
-// data structures on host
+// data structures on host (pinnable memory) TODO: Check how much of this could be allocated!
 double complex* wf_host;
 double complex* propagator_T_host;
 double complex* propagator_Vext_host;
+double complex* density_k_host;
+double* density_r_host;
 double* Vdd_host;
 
 // data structures on device
@@ -152,15 +164,21 @@ void* simulation_thread(void* passing_ptr) {
   pthread_barrier_wait (&barrier_global);
   printf("running %s thread.\n",thread_names[SIMULATION_THRD]);
   
-  // allocate memory on host
+  // allocate pinnable memory on host
+  // arrays
   cudaHostAlloc((void**) &(wf_host), sizeof(double complex)*NX*NY*NZ, cudaHostAllocDefault); // pinnable memory <- check here for cudaMallocHost (could be faster)
-  cudaHostAlloc((void**) &norm_host, sizeof(double), cudaHostAllocDefault); // pinnable memory <- check here for cudaMallocHost (could be faster)
   cudaHostAlloc((void**) &propagator_T_host, sizeof(double complex)*NX*NY*NZ, cudaHostAllocDefault); // pinnable memory <- check here for cudaMallocHost
   cudaHostAlloc((void**) &propagator_Vext_host, sizeof(double complex)*NX*NY*NZ, cudaHostAllocDefault); // pinnable memory <- check here for cudaMallocHost (could be faster)
+  cudaHostAlloc((void**) &density_k_host, sizeof(double complex)*NX*NY*NZ, cudaHostAllocDefault); // for copying denstiy of wf in Fourier space
+  cudaHostAlloc((void**) &density_r_host, sizeof(double)*NX*NY*NZ, cudaHostAllocDefault);
   cudaHostAlloc((void**) &Vdd_host, sizeof(double)*NX*NY*NZ, cudaHostAllocDefault);
+  
+  //scalars
+  cudaHostAlloc((void**) &norm_host, sizeof(double), cudaHostAllocDefault); // pinnable memory <- check here for cudaMallocHost (could be faster)
+  
   printf("allocated memory on host.\n");
   
-    
+  
 #ifdef DEBUG
   printf("1st barrier reached by %s.\n",thread_names[SIMULATION_THRD]);
 #endif
@@ -174,16 +192,28 @@ void* simulation_thread(void* passing_ptr) {
   else {
     
     printf("initating wavefunction on device.\n");
+#ifndef V_CON
     call_kernel_Z_1d( ker_gauss_1d, complex_arr1_dev, (streams)[SIMULATION_STREAM] );
-    
+    //call_kernel_Z_1d( ker_const_1d, complex_arr1_dev, (streams)[SIMULATION_STREAM] );
+#else
+    call_kernel_Z_1d( ker_gauss_1d, complex_arr1_dev, (streams)[SIMULATION_STREAM] );
+    //call_kernel_Z_1d( ker_const_1d, complex_arr1_dev, (streams)[SIMULATION_STREAM] );
+#endif    
   }
   
   // copying device pointers to host memory (to make them callable in kernels)
   //cudaMemcpyFromSymbol(&operator_T_h_ptr, operator_T_dev_ptr, sizeof(dev_funcZ_ptr_t));
   //cudaMemcpyFromSymbol(&operator_Vext_h_ptr, operator_Vext_dev_ptr, sizeof(dev_funcZ_ptr_t));
   
-  printf("creating propagator T\n");
-  //call_kernel_Z_1d( ker_create_propagator_T, propagator_T_dev, (streams)[HELPER_STREAM] );
+  printf("creating propagators\n");
+  /*
+   * TODO: - do it parallel with OpenMP! (6 cores)
+   * 
+   * it is possioble to do it on device
+   * call_kernel_Z_1d( ker_create_propagator_T, propagator_T_dev, (streams)[HELPER_STREAM] );
+   */
+  omp_set_num_threads(6);
+  #pragma omp parallel for
   for( uint64_t ii=0; ii < NX; ii++ ) {
 #ifdef REAL_TIME
     propagator_T_host[ii] = cexp(-I*kx(ii)*(0.5*kx(ii)*DT));
@@ -194,8 +224,16 @@ void* simulation_thread(void* passing_ptr) {
     propagator_Vext_host[ii] = cexpl(-(0.5*OMEGA*OMEGA*(ii*DX+XMIN)*(ii*DX+XMIN)*DT)); // <- !!! KOLEJNOSC MNOZEMIA A DOKLADNOSC !!!
 #endif
     //printf("%.15f + %.15fj\n",creal(propagator_Vext_host[ii]), cimag(propagator_Vext_host[ii]) );
-    //Vdd_host[ii] = 
+#ifdef V_DIP
+    // test it using contact interactions only
+    Vdd_host[ii] = Vdd(kx(ii),1.,1.) + G_CONTACT*SQRT_2PI; // dipolar + contact interactions
+#endif
   }
+  
+  /*
+   * CHECK IF IT IS DONE IN pipelining?
+   * probably not...
+   */
   
   // copying propag T to dev
   HANDLE_ERROR( cudaMemcpyAsync(propagator_T_dev, propagator_T_host,
@@ -216,6 +254,13 @@ void* simulation_thread(void* passing_ptr) {
 				NX*NY*NZ*sizeof(cuDoubleComplex),
 				cudaMemcpyHostToDevice,
 				(streams)[HELPER_STREAM]) );
+#ifdef V_DIP
+  // copying propag Vext to dev
+  HANDLE_ERROR( cudaMemcpyAsync(Vdd_dev, Vdd_host,
+				NX*NY*NZ*sizeof(cuDoubleComplex),
+				cudaMemcpyHostToDevice,
+				(streams)[SIMULATION_STREAM]) );
+#endif
   
 #ifdef DEBUG
   /*
@@ -227,11 +272,12 @@ void* simulation_thread(void* passing_ptr) {
 #endif
   
   // saving to file initial wavefuntion (1st frame) <- CZY TO JEST POTRZEBNE ???
-  /*for (uint64_t ii=0 ; ii < NX*NY*NZ; ii++)
-         //fprintf( (files[WF_FRAMES_FILE])->data, "%.15f\t%.15f\t%.15f\n", XMIN+DX*ii, creal((wf_host)[ii]), cimag((wf_host)[ii]) );*/
   fwrite( wf_host, sizeof(double complex), NX*NY*NZ, (files[WF_FRAMES_FILE])->data );
   
   // saving to file propagators T, Vext, and F{ Vdd }
+  /*
+   * TODO: place this in helper thread on host
+   */
   fprintf( (files[PROPAGATORS_FILE])->data, "x\t\t\tRe[e^-iVext(x)dt]\tIm[e^-iVext(x)dt]\tkx\t\t\tRe[e^-iT(kx)dt]\tIm[e^-iT(kx)dt]\tVdd\n"); // header
   for (uint64_t ii=0 ; ii < NX*NY*NZ; ii++) {
          fprintf( (files[PROPAGATORS_FILE])->data, "%.15f\t%.15f\t%.15f\t%.15f\t%.15f\t%.15f\t%.15f\n", XMIN + ii*DX, creal(propagator_Vext_host[ii]), cimag(propagator_Vext_host[ii]),
@@ -250,23 +296,8 @@ void* simulation_thread(void* passing_ptr) {
   pthread_barrier_wait (&barrier);
   
   
-#ifdef DEBUG     
-  //call_kernel_Z_1d( ker_print_Z, complex_arr1_dev, (streams)[SIMULATION_STREAM] );
-#endif
-  // checking norm of initial wavefunction
-  CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, complex_arr1_dev, 1, norm_dev) );
-  //call_kernel_ZD_1d( ker_count_norm_wf_1d, complex_arr1_dev, norm_dev,  (streams)[SIMULATION_STREAM], NX*NY*NZ*sizeof(double) );
   
-  cudaDeviceSynchronize();
-  printf("pointers: \n%p\n%p\n%p\n",&norm_host,norm_dev,(streams)+SIMULATION_STREAM);
-  HANDLE_ERROR( cudaMemcpyAsync(&norm_host, norm_dev,
-        			sizeof(double),
-				cudaMemcpyDeviceToHost,
-				(streams)[HELPER_STREAM]) );
-  cudaDeviceSynchronize();
-  norm_host *= sqrt(DX);
-  fprintf( (files[STATS_FILE])->data, "norm of initial wf: %.15f\tdx: %.15f\tsqrt dx: %.15f\n\n", norm_host, DX, sqrt(DX) );
-  
+#ifdef DEBUG
   // checking total norm of propagator T (should be sqrt[Nx*|e^ia|^2] = sqrt[Nx], because Im[a] == 0 )
   CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, propagator_T_dev, 1, norm_dev) );
   cudaDeviceSynchronize();
@@ -275,10 +306,23 @@ void* simulation_thread(void* passing_ptr) {
 				cudaMemcpyDeviceToHost,
 				(streams)[HELPER_STREAM]) );
   cudaDeviceSynchronize();
-  fprintf( (files[STATS_FILE])->data, "norm (cublas) propagator_T_dev: %.15f\n", norm_host );
-       
-  // header of a file <- DO FILEIO.C PRZENIESC!
-  fprintf( (files[STATS_FILE])->data, "\nt [dt]:\tnorm:\t\t\tchemic. pot.\t\t<T>\t\t\t<Vext>\t\t\t<Vcon>\t\t\t<Vdip>\n" );
+  fprintf( (files[PROPAGATORS_FILE])->data, "norm (cublas) propagator_T_dev: %.15f\n", norm_host );
+#endif
+  
+  
+  // checking norm of initial wavefunction
+  CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, complex_arr1_dev, 1, norm_dev) );
+  cudaDeviceSynchronize();
+  HANDLE_ERROR( cudaMemcpyAsync(&norm_host, norm_dev,
+        			sizeof(double),
+				cudaMemcpyDeviceToHost,
+				(streams)[HELPER_STREAM]) );
+  cudaStreamSynchronize( streams[HELPER_STREAM] );
+  norm_host *= sqrt(DX);  
+  fprintf( (files[STATS_FILE])->data, "norm of initial wf: %.15f\tdx: %.15f\tsqrt dx: %.15f\n\n", norm_host, DX, sqrt(DX) );
+  
+  // header of a file with statistics
+  fprintf( (files[STATS_FILE])->data, "\n\nt [dt]:\tnorm:\t\t\tchemic. pot.\t\t<T>\t\t\t<Vext>\t\t\t<Vcon>\t\t\t<Vdip>\n" );
   
   
        /* *************************************************************************************************************************************** *
@@ -311,7 +355,6 @@ void* simulation_thread(void* passing_ptr) {
      
      while(timesteps) {
        timesteps--;
-       //printf("main algorithm\n");
        /* *************************************************************************************************************************************** *
 	* 																	  *
 	* 							ALGORITHM STEP									  *
@@ -339,32 +382,12 @@ void* simulation_thread(void* passing_ptr) {
        call_kernel_ZD_1d( ker_modulus_pow2_wf_1d, complex_arr3_dev, double_arr1_dev, streams[HELPER_STREAM]);
        // it could be replaced with complex_arr3_dev <- maybe faster to copy array with cublas and do not synchronize streams 
        
-            // multiply by T propagator (do in callback) <- J
-       call_kernel_ZZ_1d( ker_propagate, complex_arr2_dev, propagator_T_dev, (streams)[SIMULATION_STREAM] );
+       // multiply by T propagator (do in callback) <- J
+       call_kernel_ZZ_1d( ker_multiplyZZ, complex_arr2_dev, propagator_T_dev, (streams)[SIMULATION_STREAM] );
        
-       
-#ifdef DEBUG
-       
-       // count norm using own function
-       //call_kernel_ZD_1d( ker_count_norm_wf_1d, complex_arr2_dev, norm_dev,  (streams)[SIMULATION_STREAM], 1024*sizeof(cuDoubleComplex) );
-       
-       //count norm using CUBLAS       
-       //CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, propagator_T_dev, 1, norm_dev) );
-       
-       
-       // saving after fft
-       /*HANDLE_ERROR( cudaMemcpy(wf_host, complex_arr2_dev, NX*NY*NZ*sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost) );
-       
-       for (uint64_t ii=0 ; ii < NX*NY*NZ/2; ii++)
-         fprintf( (files[])->data[1], "%.15f\t%.15f\t%.15f\n", DKx*ii, creal((wf_host)[ii]), cimag((wf_host)[ii]) );
-       for (uint64_t ii = NX*NY*NZ/2 ; ii < NX*NY*NZ; ii++)
-         fprintf( (files[])->data[1], "%.15f\t%.15f\t%.15f\n", 2*KxMIN + DKx*ii, creal((wf_host)[ii]), cimag((wf_host)[ii]) );
-       */
-#endif
        
        
        // go back to 'positions`'? space <- JAK JEST PO ANGIELSKU PRZESTRZEN POLOZEN ???
-       cudaStreamSynchronize(streams[HELPER_STREAM]); // ensure that complex 
        CHECK_CUFFT( cufftExecZ2Z((cufft_plans)[BACKWARD_PSI],
 				 complex_arr2_dev,
 				 complex_arr1_dev,
@@ -373,40 +396,55 @@ void* simulation_thread(void* passing_ptr) {
        call_kernel_Z_1d( ker_normalize_1d, complex_arr1_dev, (streams)[SIMULATION_STREAM] );
        
        
-       
-       // count DFT of modulus of wavefunction (in positions` space)
+#ifdef V_DIP
+       cudaStreamSynchronize(streams[HELPER_STREAM]); // ensure that density is counted 
+       // count DFT of modulus of wavefunction (in positions` space).
+       // CUFFT is done in HELPER_STREAM
        CHECK_CUFFT( cufftExecD2Z((cufft_plans)[FORWARD_DIPOLAR],
 				 double_arr1_dev,
 				 complex_arr3_dev) ); // double to complex must be forward, so no need to specify direction
-       
+       // now in double_arr1_dev we have density in positions space represantation
+       // and in complex_arr3_dev we have Fourier transform of density
+#endif       
        
        /*
         *       EVOLVE IN POSITIONS` SPACE
         */
        
-       // evolve via external potential (if defined)
+       // evolve via external potential Vext (if defined)
 #ifdef V_EXT
-       call_kernel_ZZ_1d( ker_propagate, complex_arr1_dev, propagator_Vext_dev, (streams)[SIMULATION_STREAM] );
+       call_kernel_ZZ_1d( ker_multiplyZZ, complex_arr1_dev, propagator_Vext_dev, (streams)[SIMULATION_STREAM] );
 #endif
        
        // evolve via contact interactions potential
 #ifdef V_CON
+ #ifndef VDIP
        cudaStreamSynchronize(streams[HELPER_STREAM]); // make sure double_arr1_dev is filled with |\psi|^2
        call_kernel_ZD_1d( ker_propagate_Vcon_1d, complex_arr1_dev, double_arr1_dev,(streams)[SIMULATION_STREAM] );
+ #endif
 #endif
        
+#ifdef VDIP
+       // multiply Fourier Transform of density with Fourier transform of density
+       call_kernel_ZD_1d( ker_multiplyZD, complex_arr3_dev, Vdd_dev, (streams)[HELPER_STREAM] ); // <- TODO: Do it in callback load !!!
        
-       // count integral in potential of dipolar interactions <- in callback load 
+       // count integral in potential of dipolar interactions - convolution (on complex_arr3_dev in place) 
        CHECK_CUFFT( cufftExecZ2Z((cufft_plans)[BACKWARD_DIPOLAR],
 				 complex_arr3_dev,
 				 complex_arr3_dev,
 				 CUFFT_INVERSE) );
-       // normalize (in callback store
+       // normalize (not in callback store)
        
-       // create propagator of Vdip (in)
+       // now in complex_arr3_dev we have Vint(r)
+       
+       // create propagator of Vdip (in) / propagate Vdip
+       call_kernel_ZZ_1d( ker_propagate_Vint_1d, complex_arr1_dev, complex_arr3_dev, (streams)[SIMULATION_STREAM] );
+#endif
+       
        
        
 #ifdef IMAG_TIME
+       cudaStreamSynchronize(streams[SIMULATION_STREAM]); // make sure evolution via interactions is completed
        // normalize wavefunction to |\psi|^2 = 1 (at every step!)
        CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, complex_arr1_dev, 1, norm_dev) ); // count norm
        cudaDeviceSynchronize(); // ensure norm is from current step
@@ -465,22 +503,8 @@ void* simulation_thread(void* passing_ptr) {
 #ifdef DEBUG
   HANDLE_ERROR( cudaFreeHost(propagator_T_host) );
 #endif
-  /// free memory on device
-  HANDLE_ERROR( cudaFree(complex_arr1_dev) ); 	//
-  HANDLE_ERROR( cudaFree(complex_arr2_dev) ); 	//
-  HANDLE_ERROR( cudaFree(complex_arr3_dev) ); 	//
-  HANDLE_ERROR( cudaFree(double_arr1_dev)  ); 	//
-  HANDLE_ERROR( cudaFree(propagator_T_dev) ); 	//
-  HANDLE_ERROR( cudaFree(propagator_Vext_dev) );	//
-  HANDLE_ERROR( cudaFree(Vdd_dev) );		//
   
-  
-  //HANDLE_ERROR( cudaFree(mean_T_dev) ); // result of integral with kinetic energy operator in momentum representaion
-  //HANDLE_ERROR( cudaFree(mean_Vdip_dev) ); // result of integral with Vdip operator in positions' representation
-  //HANDLE_ERROR( cudaFree(mean_Vext_dev) ); // result of integral with Vext operator in positions' representation
-  //HANDLE_ERROR( cudaFree(global_stuff->mean_Vcon_dev) ); // result of integral with Vcon operator in positions' representation
-  HANDLE_ERROR( cudaFree(norm_dev) ); //
-  
+  free_device();
   /*
   HANDLE_ERROR( cudaFree(complex_arr1_dev) ); 	//
   HANDLE_ERROR( cudaFree(complex_arr2_dev) ); 	//
@@ -537,11 +561,9 @@ void* helper_thread(void* passing_ptr) {
   // scalar variables
   HANDLE_ERROR( cudaMalloc((void**) &(global_stuff->mean_T_dev), sizeof(double))    ); // result of integral with kinetic energy operator in momentum representaion
   HANDLE_ERROR( cudaMalloc((void**) &meanZ_T_dev, sizeof(cuDoubleComplex))    ); // result of integral with kinetic energy operator in momentum representaion
-  //HANDLE_ERROR( cudaMalloc((void**) &(mean_Vdip_dev), sizeof(double)) ); // result of integral with Vdip operator in positions' representation
-  //HANDLE_ERROR( cudaMalloc((void**) &(global_stuff->mean_Vext_dev), sizeof(double)) ); // result of integral with Vext operator in positions' representation
   HANDLE_ERROR( cudaMalloc((void**) &meanZ_Vext_dev, sizeof(cuDoubleComplex))    ); // result of integral with kinetic energy operator in momentum representaion
   HANDLE_ERROR( cudaMalloc((void**) &meanZ_Vcon_dev, sizeof(cuDoubleComplex))    ); // result of integral with kinetic energy operator in momentum representaion
-  //HANDLE_ERROR( cudaMalloc((void**) &(global_stuff->mean_Vcon_dev), sizeof(double)) ); // result of integral with Vcon operator in positions' representation
+  HANDLE_ERROR( cudaMalloc((void**) &(meanZ_Vdip_dev), sizeof(cuDoubleComplex)) ); // result of integral with Vdip operator in positions' representation
   HANDLE_ERROR( cudaMalloc((void**) &(norm_dev), sizeof(double)) ); // variable to hold norm of wavefunction
   
   
@@ -680,8 +702,29 @@ void alloc_host() {
   
 }
 
+void free_device() {
+  // free memory on device
+  HANDLE_ERROR( cudaFree(complex_arr1_dev) ); 	//
+  HANDLE_ERROR( cudaFree(complex_arr2_dev) ); 	//
+  HANDLE_ERROR( cudaFree(complex_arr3_dev) ); 	//
+  HANDLE_ERROR( cudaFree(double_arr1_dev)  ); 	//
+  HANDLE_ERROR( cudaFree(propagator_T_dev) ); 	//
+  HANDLE_ERROR( cudaFree(propagator_Vext_dev) );	//
+  HANDLE_ERROR( cudaFree(Vdd_dev) );		//
+  
+  
+  //HANDLE_ERROR( cudaFree(mean_T_dev) ); // result of integral with kinetic energy operator in momentum representaion
+  //HANDLE_ERROR( cudaFree(mean_Vdip_dev) ); // result of integral with Vdip operator in positions' representation
+  //HANDLE_ERROR( cudaFree(mean_Vext_dev) ); // result of integral with Vext operator in positions' representation
+  //HANDLE_ERROR( cudaFree(global_stuff->mean_Vcon_dev) ); // result of integral with Vcon operator in positions' representation
+  HANDLE_ERROR( cudaFree(norm_dev) ); //
+  
+}
 
 
+void free_pinnable() {
+    
+}
 
 /* ************************************************************************************************************************************* *
  * 																	 *
@@ -701,11 +744,14 @@ void save_stats(uint64_t step_index) {
   CHECK_CUBLAS( cublasDznrm2( cublas_handle, NX*NY*NZ, complex_arr1_dev, 1, norm_dev) );
 #endif
   
+  cudaDeviceSynchronize();
+  
   // count <T> and copy norm in parallel
   CHECK_CUFFT( cufftExecZ2Z((cufft_plans)[FORWARD_PSI], complex_arr1_dev, complex_arr2_dev, CUFFT_FORWARD) ); // make sure we have copy of wavefunction in momentum space
   HANDLE_ERROR( cudaMemcpyAsync(&norm_host, norm_dev, sizeof(double), cudaMemcpyDeviceToHost, (streams)[HELPER_STREAM]) ); // copy norm to host in parallel
   cudaStreamSynchronize( (streams)[SIMULATION_STREAM] ); // make sure FFT done
   call_kernel_ZZ_1d( ker_T_wf, complex_arr2_dev, complex_arr3_dev, (streams)[SIMULATION_STREAM]); // make vector T|\psi>
+  cudaStreamSynchronize( (streams)[SIMULATION_STREAM] ); // make sure FFT done
   CHECK_CUBLAS( cublasZdotc(cublas_handle, NX*NY*NZ, (complex_arr2_dev), 1, complex_arr3_dev, 1, meanZ_T_dev) ); // count <\psi||T \psi>
   cudaDeviceSynchronize();
   
@@ -742,7 +788,7 @@ void save_stats(uint64_t step_index) {
 #endif
   cudaStreamSynchronize( (streams)[SIMULATION_STREAM] );
 #ifdef V_DIP
-  CHECK_CUBLAS( cublasZdotc(cublas_handle, NX*NY*NZ, complex_arr1_dev, 1, complex_arr3_dev, 1, meanZ_Vdip_dev) ); // count <\psi||T \psi>
+  //CHECK_CUBLAS( cublasZdotc(cublas_handle, NX*NY*NZ, complex_arr1_dev, 1, complex_arr3_dev, 1, meanZ_Vdip_dev) ); // count <\psi||T \psi>
 #endif  
   
   
@@ -763,7 +809,7 @@ void save_stats(uint64_t step_index) {
   meanZ_Vext_host = 0. + I*0.;
 #endif
 #ifdef V_CON
-  meanZ_T_host *= (0.5*DX);
+  meanZ_Vcon_host *= (0.5*DX);
 #else
   meanZ_Vcon_host = 0. + I*0.;
 #endif

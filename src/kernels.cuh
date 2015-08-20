@@ -24,6 +24,7 @@ __device__ static __inline__ double kx_dev(const uint16_t index) {
  * ************************************************************************************************************************************* */
  // these kernels have in arguments only array of complex numbers!
 __global__ void ker_gauss_1d(cufftDoubleComplex* data);
+__global__ void ker_const_1d(cuDoubleComplex* wf);
 __global__ void ker_normalize_1d(cufftDoubleComplex* cufft_inverse_data); // normalize after CUFFT (only)
 __global__ void ker_create_propagator_T(cuDoubleComplex* propagator_T_dev);
 __global__ void ker_print_Z(cuDoubleComplex* arr_dev);
@@ -49,7 +50,7 @@ __global__ void ker_energy_Vext_1d(cuDoubleComplex* wf, double* Vext_mean);
 
 __global__ void ker_propagate_Vcon_1d(cuDoubleComplex* wf, double* density);
 
-
+__global__ void ker_phase_imprint_1d(cuDoubleComplex* wf, double* phase);
 
 /* ************************************************************************************************************************************* *
  * 																	 *
@@ -57,7 +58,8 @@ __global__ void ker_propagate_Vcon_1d(cuDoubleComplex* wf, double* density);
  * 																	 *
  * ************************************************************************************************************************************* */
 // these kernels have in argument two arrays of complex numbers
-__global__ void ker_propagate(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* popagator_T_dev);
+__global__ void ker_multiplyZZ(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* popagator_T_dev);
+__global__ void ker_propagate_Vint_1d(cuDoubleComplex* wf, cuDoubleComplex* Vint);
 
 
 

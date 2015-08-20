@@ -48,6 +48,16 @@ __global__ void ker_gauss_1d(cuDoubleComplex* data) {
 }
 
 
+__global__ void ker_const_1d(cuDoubleComplex* wf) {
+  // get the index of thread
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+    
+  while (ii < NX) {
+    wf[ii] = make_cuDoubleComplex( (1./(XMAX-XMIN)), 0. );
+    ii += blockDim.x * gridDim.x;
+  }
+}
+
 
 /*
  * Divides the result of inverse cufft by number of samples (to get unitary form of DFT).
@@ -123,6 +133,16 @@ __global__ void ker_print_Z(cuDoubleComplex* arr_dev)
  * 							KERNELS TYPE ZD									 *
  * 																	 *
  * ************************************************************************************************************************************* */
+
+__global__ void ker_multiplyZD(cuDoubleComplex* complex_arr_dev, double* double_arr_dev) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  while (ii < NX*NY*NZ) {
+    // WYTESTOWAC CZY SZYBSZE NIE BEDZIE OBLICZANIE PROPAGATORA
+    complex_arr_dev[ii] = cuCmul( complex_arr_dev[ii], double_arr_dev[ii] );
+    ii += blockDim.x * gridDim.x;
+  }
+}
 
 __global__ void ker_modulus_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_arr_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
@@ -311,38 +331,87 @@ __global__ void ker_propagate_Vcon_1d(cuDoubleComplex* wf, double* density) {
     
     //factor[tid] = G_CONTACT*density[ii]*NX*NY*NZ;// gN|\psi|^2
     
-#ifdef DEBUG
-    if (ii%4 == 0) printf("x: %.15f\twavefunction before progration Vcon: %.15f + %.15fj\tdensity: %.15f\n", XMIN + ii*DX,cuCreal(wf[ii]),cuCimag(wf[ii]),density[ii]);
-    __syncthreads();
-#endif
+// #ifdef DEBUG
+//     if (ii%4 == 0) printf("x: %.15f\twavefunction before progration Vcon: %.15f + %.15fj\tdensity: %.15f\n", XMIN + ii*DX,cuCreal(wf[ii]),cuCimag(wf[ii]),density[ii]);
+//     __syncthreads();
+// #endif
     // WYTESTOWAC CZY SZYBSZE NIE BEDZIE OBLICZANIE PROPAGATORA
 #ifdef REAL_TIME
     wf[ii] = cuCmul(  wf[ii], make_cuDoubleComplex(  cos( G_CONTACT*density[ii]*DT ),-sin( G_CONTACT*density[ii]*DT )  )  );
     //wf[ii] = cuCmul(  wf[ii], make_cuDoubleComplex(cos(factor[tid]*DT),-sin(factor[tid]*DT))  );
 #endif
 #ifdef IMAG_TIME
-    wf[ii] = cuCmul( wf[ii], exp(-G_CONTACT*density[ii]) );
+    wf[ii] = cuCmul( wf[ii], exp(-G_CONTACT*density[ii]*DT) );
+#endif
+// #ifdef DEBUG
+//     if (ii < 10) printf("wavefunction after progration Vcon: %.15f + %.15fj\n",cuCreal(wf[ii]),cuCimag(wf[ii]));
+// #endif
+    
+    ii += blockDim.x * gridDim.x;
+  }
+}
+
+
+/*
+ * PROPAGATION VIA INTERACTIONS (with predefined interactions` potential)
+ * 
+ * (this evolution is made in positions` space)
+ * cuDoubleComplex* wf - wavefunction
+ * cuDoubleComplex* Vint - interactions` potential (integral is counted via convolution with FFT)
+ */
+__global__ void ker_propagate_Vint_1d(cuDoubleComplex* wf, cuDoubleComplex* Vint) {
+  //extern __shared__ double factor[];
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  double Re_Vint = Vint[ii].x;
+  double Im_Vint = Vint[ii].y;
+  
+  while (ii < NX*NY*NZ) {
+    
+    //factor[tid] = G_CONTACT*density[ii]*NX*NY*NZ;// gN|\psi|^2
+    
+#ifdef DEBUG
+    if (Im_Vint > 0) printf("x: %.15f\twavefunction before progration Vint: %.15f + %.15fj\tVint: %.15f + %.15fj\n", XMIN + ii*DX,cuCreal(wf[ii]),cuCimag(wf[ii]),Re_Vint,Im_Vint);
+    __syncthreads();
+#endif
+#ifdef REAL_TIME
+    // TODO: Check if taking imaginary part is good? 
+    wf[ii] = cuCmul(  wf[ii], make_cuDoubleComplex(  exp(Im_Vint*DT)*cos( Re_Vint*DT ),-exp(Im_Vint*DT)*sin( Re_Vint*DT )  )  );
+#endif
+#ifdef IMAG_TIME
+    wf[ii] = cuCmul( wf[ii], make_cuDoubleComplex(  exp(-Re_Vint*DT)*cos( Re_Vint*DT ),-exp(Im_Vint)*sin( Re_Vint*DT )  ) );
 #endif
 #ifdef DEBUG
-    if (ii < 10) printf("wavefunction after progration Vcon: %.15f + %.15fj\n",cuCreal(wf[ii]),cuCimag(wf[ii]));
+    if (ii < 10) printf("wavefunction after progration Vcon: %.15f + %.15fj\n",cuCreal(wf[ii]),cuCimag(wf[ii]))printf("x: %.15f\twavefunction before progration Vcon: %.15f + %.15fj\tVint: %.15f + %.15fj\n", XMIN + ii*DX,cuCreal(wf[ii]),cuCimag(wf[ii]),Re_Vint,Im_Vint);
 #endif
     
     ii += blockDim.x * gridDim.x;
   }
 }
+
 /*
- * COUNTING CONTACT INTERACTIONS ENERGY IN PLACE!!! <- think if it is possible?
- * !!! must copy wafeunction before !!!
+ *          PHASE IMPRINTING
+ * double* phase is an array contaning phase on grid in radians
  */
-__global__ void ker_Vcon_wf(cuDoubleComplex* wf_dev, double* density) {
-  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
-  
-  while (ii < NX*NY*NZ) {
-    wf_dev[ii] = cuCmul(wf_dev[ii], G_CONTACT*density[ii] );
-    ii += blockDim.x * gridDim.x;
-  }
-  
+__global__ void ker_phase_imprint_1d(cuDoubleComplex* wf, double* phase) {
+    uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+    
+    // register variables <- quicker?
+    double mod_wf;
+    double phase_reg;
+    
+    while (ii < NX*NY*NZ) {
+        mod_wf = cuCabs(wf[ii]);
+        phase_reg = phase[ii];
+        
+        wf[ii] = make_cuDoubleComplex( mod_wf*cos(phase_reg) , mod_wf*sin(phase_reg) );
+        
+        ii += blockDim.x * gridDim.x;
+    }
+    
 }
+
+
+
 
 
 /* ************************************************************************************************************************************* *
@@ -354,12 +423,26 @@ __global__ void ker_Vcon_wf(cuDoubleComplex* wf_dev, double* density) {
 /*
  * Element-wise vector multiplication
  */
-__global__ void ker_propagate(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* propagator_dev) {
+__global__ void ker_multiplyZZ(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* propagator_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
   while (ii < NX*NY*NZ) {
     // WYTESTOWAC CZY SZYBSZE NIE BEDZIE OBLICZANIE PROPAGATORA
     wf_momentum_dev[ii] = cuCmul( wf_momentum_dev[ii], propagator_dev[ii] );
+    ii += blockDim.x * gridDim.x;
+  }
+}
+
+/*
+ * Element-wise multiplication
+ * Multiply elements of first array by real parts of elements of second array
+ */
+__global__ void ker_multiplyZReZ(cuDoubleComplex* complex_arr1_dev, cuDoubleComplex* complex_arr2_dev) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  
+  while (ii < NX*NY*NZ) {
+    double factor = complex_arr2_dev[ii].x;
+    complex_arr2_dev[ii] = cuCmul( complex_arr1_dev[ii], factor );
     ii += blockDim.x * gridDim.x;
   }
 }

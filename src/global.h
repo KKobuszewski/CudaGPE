@@ -20,28 +20,36 @@
 #define DIM 1
 
 // evolution type
-//#define REAL_TIME ( (double complex) -I)
-//#define IMAG_TIME ( (double complex) -1)
-//#define REAL_TIME -I
-//#define IMAG_TIME -1
 
-#ifndef EVOLUTION
-//#define EVOLUTION REAL_TIME
-#endif
 
-// TIMESTEP LENGTH
-#define DT ((double) 1e-6)
+
 
 // scalling the grid <- poprawic by nie bylo obliczen !!!
+// #ifdef V_CON
+// #define OMEGA ((double) 1. )
+// #define XMAX ((double) 5./sqrt(OMEGA) )
+// #else
 #define XMAX ((double) .5)
+#define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )
+// #endif
 #define XMIN (-XMAX)
 #define DX ((double) (XMAX - XMIN)/(NX))
 #define DKx ((double) 6.283185307179586/(XMAX-XMIN))
 #define KxMAX ((double) 3.14159265358979323846/(DX))
 #define KxMIN ((double) -3.14159265358979323846/(DX))
-#define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )
 
-#define G_CONTACT ((double) 1. )
+
+
+// TIMESTEP LENGTH
+#ifdef IMAG_TIME
+#define DT ((double) 1e-5/OMEGA)
+#else
+#define DT ((double) 1e-7)
+#endif
+
+
+
+#define G_CONTACT 100//((double) 10/((XMAX - XMIN)*sqrt(OMEGA)) )
 #define G_DIPOLAR ((double) 1. )
 
 

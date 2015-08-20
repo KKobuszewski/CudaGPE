@@ -10,6 +10,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <cuda_runtime.h>
+//#include <omp.h>
 
 #include "helper_cuda.h"
 

@@ -42,15 +42,15 @@
 
 // TIMESTEP LENGTH
 #ifdef IMAG_TIME
-#define DT ((double) 1e-5/OMEGA)
+#define DT ((double) 1e-4/OMEGA)
 #else
 #define DT ((double) 1e-7)
 #endif
 
 
 
-#define G_CONTACT 100//((double) 10/((XMAX - XMIN)*sqrt(OMEGA)) )
-#define G_DIPOLAR ((double) 1. )
+#define G_CONTACT 5*OMEGA//((double) 10/((XMAX - XMIN)*sqrt(OMEGA)) )
+#define G_DIPOLAR ((double) 0. )
 
 
 
@@ -95,40 +95,6 @@ typedef struct Globals {
   double complex* init_wf_map; // map
   int init_wf_fd; // file descriptor
   int wf_save_fd;
-  
-  // data structures on host
-  double complex* wf_host;
-  double statistics_host;
-  // cross sections on host??
-  
-  // data structures on device
-  cuDoubleComplex* complex_arr1_dev; // pointer on array holding wavefunction in device memory
-  cuDoubleComplex* complex_arr2_dev;
-  double* double_arr1_dev;
-  cuDoubleComplex* propagator_T_dev; // array of constant factors e^-ik**2/2dt
-  cuDoubleComplex* propagator_Vext_dev; // array of constant factors e^-iVextdt
-  double* Vdip_dev; // array of costant factors <- count on host with spec funcs lib or use Abramowitz & Stegun approximation
-  
-  // cross sections on device
-  
-  
-  
-  //scalars on host
-  double mean_T_host;
-  double mean_Vdip_host;
-  double mean_Vext_host;
-  double mean_Vcon_host;
-  double norm_host;
-  
-  
-  
-  // scalars on device <- MOZE SKOPIOWAC TO NA DEVICE PRZEZ COPY FROM SYMBOL, BY BYLO LATWIEJ SIE TYM POSLUGIWAC ?!!!
-  double* mean_T_dev;
-  double* mean_Vdip_dev;
-  double* mean_Vext_dev;
-  double* mean_Vcon_dev;
-  double* norm_dev;
-  
   
 } Globals;
 

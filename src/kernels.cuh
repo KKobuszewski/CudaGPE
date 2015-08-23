@@ -59,6 +59,7 @@ __global__ void ker_phase_imprint_1d(cuDoubleComplex* wf, double* phase);
  * ************************************************************************************************************************************* */
 // these kernels have in argument two arrays of complex numbers
 __global__ void ker_multiplyZZ(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex* popagator_T_dev);
+__global__ void ker_multiplyZReZ(cuDoubleComplex* complex_arr1_dev, cuDoubleComplex* complex_arr2_dev);
 __global__ void ker_propagate_Vint_1d(cuDoubleComplex* wf, cuDoubleComplex* Vint);
 
 

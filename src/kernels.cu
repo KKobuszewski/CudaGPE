@@ -381,7 +381,7 @@ __global__ void ker_propagate_Vint_1d(cuDoubleComplex* wf, cuDoubleComplex* Vint
     wf[ii] = cuCmul( wf[ii], make_cuDoubleComplex(  exp(-Re_Vint*DT)*cos( Re_Vint*DT ),-exp(Im_Vint)*sin( Re_Vint*DT )  ) );
 #endif
 #ifdef DEBUG
-    if (ii < 10) printf("wavefunction after progration Vcon: %.15f + %.15fj\n",cuCreal(wf[ii]),cuCimag(wf[ii]))printf("x: %.15f\twavefunction before progration Vcon: %.15f + %.15fj\tVint: %.15f + %.15fj\n", XMIN + ii*DX,cuCreal(wf[ii]),cuCimag(wf[ii]),Re_Vint,Im_Vint);
+    if (ii < 10) printf("wavefunction after progration Vcon: %.15f + %.15fj\tVint: %.15f + %.15fj\n", XMIN + ii*DX,cuCreal(wf[ii]),cuCimag(wf[ii]),Re_Vint,Im_Vint);
 #endif
     
     ii += blockDim.x * gridDim.x;
@@ -435,7 +435,7 @@ __global__ void ker_multiplyZZ(cuDoubleComplex* wf_momentum_dev, cuDoubleComplex
 
 /*
  * Element-wise multiplication
- * Multiply elements of first array by real parts of elements of second array
+ * Multiply elements of first array by real parts of elements of second array and saves result to second array
  */
 __global__ void ker_multiplyZReZ(cuDoubleComplex* complex_arr1_dev, cuDoubleComplex* complex_arr2_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;

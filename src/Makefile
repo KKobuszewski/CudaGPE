@@ -7,7 +7,7 @@ CLIBS     = -lgsl -lm -lpthread -L /usr/local/cuda/lib64
 #-lfftw3 
 NVCC      = /usr/local/cuda-7.0/bin/nvcc
 LD        = $(NVCC)
-NVCCPARMS += -g -G -Xptxas="-v" -arch=sm_52 -m64 -O3 -lm -Xcompiler -fopenmp
+NVCCPARMS += -g -G -Xptxas="-v" -arch=sm_52 -m64 -O3 -lm -Xcompiler -fopenmp -DGOMP_CPU_AFFINITY="2-8"
 #-O3 -use_fast_math
 # -arch sm_52 <- byc moze potrzeba zeby dobrze double liczyl
 # przyspieszanie odstepu pamieci:
@@ -16,11 +16,10 @@ NVCCPARMS += -g -G -Xptxas="-v" -arch=sm_52 -m64 -O3 -lm -Xcompiler -fopenmp
 CUINCL    = -I /usr/local/cuda-7.0/include -I /usr/local/cuda/samples/common/inc
 # -I /usr/local/cuda/include -I /usr/local/cuda-7.0/samples/common/inc -L /usr/local/cuda/lib
 NVCCINC=-I $(CUDASDK)/common/inc
-CULIBS    = -lcufft -lcublas -lgomp
+CULIBS    = -lcufft -lcublas -lgomp -DGOMP_CPU_AFFINITY="2-8"
 
 # one must define evolution type: EVOLUTION = REAL_TIME/IMAG_TIME (these values are predefined macros in code)
-DEF       = -DV_EXT -DV_CON 
-#-DV_DIP
+DEF       = -DV_EXT -DV_CON -DV_DIP
 # -DLOOSES
 # ...
 
@@ -45,10 +44,11 @@ $(PROG):	$(OBJS)
 
 
 debug: DEF += -DDEBUG -D REAL_TIME
+debug: CFLAGS += -pg
 debug: $(PROG2)
        
 $(PROG2):	$(OBJS)
-		$(LD) -o $@ $(OBJS) $(CULIBS) $(CLIBS)
+		$(LD) -o $@ $(OBJS) $(CULIBS) $(CLIBS) -Xcompiler -pg
        
 
 

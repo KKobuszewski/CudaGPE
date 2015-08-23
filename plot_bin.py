@@ -91,10 +91,10 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
       T = data[:,3]
       Vext = data[:,4]
       Vcon = data[:,5]
-      Vdip = data[:,6]
+      Vdip = data[:,6] - Vcon
 
-      virial = 2*T - 2*Vext + Vcon
-      Etot = T + Vext + Vcon
+      virial = 2*T - 2*Vext + Vcon + Vdip
+      Etot = T + Vext + Vcon + Vdip
       """
       print('norm change',np.max(n) - np.min(n),'per',np.max(t),'steps (',(np.max(n) - np.min(n))/np.max(t),')')
       print('kinetic energy  mean:',np.mean(T),'  min:',np.min(T),'  std. dev:',np.std(T))
@@ -115,6 +115,7 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
               'kinetic energy\nmean: {}   min:{}   std. dev.:{}\n\n'.format(np.mean(T),np.min(T),np.std(T)),
               'ext. pot. energy\nmean: {}   min:{}   std. dev.:{}\n\n'.format(np.mean(Vext),np.min(Vext),np.std(Vext)),
               'contact interaction energy\nmean: {}   min:{}   std. dev.:{}\n\n'.format(np.mean(Vcon),np.min(Vcon),np.std(Vcon)),
+              'dipolar interaction energy\nmean: {}   min:{}   std. dev.:{}\n\n'.format(np.mean(Vdip),np.min(Vdip),np.std(Vdip)),
               'total energy\nmean: {}   min:{}   std. dev.:{}\n\n'.format(np.mean(Etot),np.min(Etot),np.std(Etot)),
               '|virial|\nmean: {}   max:{}   std. dev.:{}\n\n'.format(np.mean(virial),np.max(np.abs(virial)),np.std(virial))
               )
@@ -130,9 +131,10 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
               'kinetic energy\nmin: {}   last: {}\n\n'.format(np.min(T),T[-1]),
               'ext. pot. energy\nmin: {}   last: {}\n\n'.format(np.min(Vext),Vext[-1]),
               'contact interaction energy\nmin: {}   last: {}\n\n'.format(np.min(Vcon),Vcon[-1]),
-              'total energy\n\nmin:{}\n\n'.format(np.min(Etot)),
-              '|virial|\nmin:{}\n\n'.format(np.min(np.abs(virial))),
-              'chemical potential\nmin:{}\n\n'.format(np.min(mu))
+              'dipolar interaction energy\nmin: {}   last: {}\n\n'.format(np.min(Vdip),Vdip[-1]),
+              'total energy\n\nmin: {}   last: {}\n\nmin: {}   last: {}  [osc. units]\n\n'.format(np.min(Etot),Etot[-1],np.min(Etot)/omega,Etot[-1]/omega),
+              '|virial|\nmin:{} [box units]   min:{} [osc. units]\n\n'.format(np.min(np.abs(virial)),np.min(np.abs(virial))/omega),
+              'chemical potential\nmin:{} [box units]   min:{} [osc. units]\n\n'.format(np.min(mu),np.min(mu)/omega)
               )
       stats_str = ''.join(stats_str)
       
@@ -160,7 +162,7 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
           plt.title('mean values of different energy operators')
           plt.xlabel('timesteps')
           plt.ylabel('energy')
-          plt.ylim([0.99*min( np.min(T),np.min(Vext), np.min(Vcon) ), 1.01*max( np.max(T),np.max(Vext) )])
+          plt.ylim([0.99*min( np.min(T),np.min(Vext),np.min(Vcon),np.min(Vdip) ), 1.01*max( np.max(T),np.max(Vext),np.max(Vcon),np.max(Vdip)  )])
           plt.plot(t,T,label='T')
           plt.plot(t,Vext,label=r'$V_{ext}$')
           plt.plot(t,Vcon,label=r'$V_{con}$')

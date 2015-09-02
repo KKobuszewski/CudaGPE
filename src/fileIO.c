@@ -15,7 +15,7 @@
 
 const uint8_t filename_str_lenght = 128;
 
-const char* files_names[] = {"simulation_parametrs","statistics","wf_frames","propagators"};
+const char* files_names[] = {"simulation_parametrs","statistics","wf_frames","propagators","wf_k"};
 
 /*
  * In case to have transparent code - open files in special function and store pointers to the files in an array
@@ -40,7 +40,7 @@ struct_file** open_struct_files(const uint8_t num_files = 5) {
    */
   
   time_t t = time(NULL);
-  strftime(str_date, sizeof(str_date), "%Y-%m-%d_%H:%M", localtime(&t));  
+  strftime(str_date, sizeof(str_date), "%Y-%m-%d_%H:%M", localtime(&t));
 #ifdef V_EXT
     #ifdef V_CON
     

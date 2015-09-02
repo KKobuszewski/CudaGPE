@@ -29,6 +29,7 @@ def get_params():
   dx = None
   Nx = None
   omega = None
+  Vdip = None
   
   # processing simulation params
   f = glob.glob(directory + 'simulation_parametrs*');
@@ -58,6 +59,8 @@ def get_params():
         Nx=int(row[1])
       if (row[0] == 'harmonic potential angular freq.:'):
         omega=np.float64(row[1])
+      if (row[0] == 'Vdip:'):
+        Vdip = row[1]
       # TODO:
       # checking potentials!
       # make it in dict!
@@ -91,10 +94,15 @@ def process_statistics(directory, evolution_type, dt,timesteps,frames, xmin, xma
       T = data[:,3]
       Vext = data[:,4]
       Vcon = data[:,5]
-      Vdip = data[:,6] - Vcon
+      Vdip = data[:,6]
 
-      virial = 2*T - 2*Vext + Vcon + Vdip
-      Etot = T + Vext + Vcon + Vdip
+      virial = 2*T - 2*Vext + Vcon
+      Etot = T + Vext + Vcon
+      if (Vdip == 'yes'):
+        Etot = T + Vext + Vdip
+        virial = 2*T - 2*Vext + Vdip
+        Vdip = Vdip - Vcon
+      
       """
       print('norm change',np.max(n) - np.min(n),'per',np.max(t),'steps (',(np.max(n) - np.min(n))/np.max(t),')')
       print('kinetic energy  mean:',np.mean(T),'  min:',np.min(T),'  std. dev:',np.std(T))

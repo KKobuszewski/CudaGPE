@@ -9,9 +9,10 @@
 #include <time.h>
 #include <math.h>
 #include <pthread.h>
-#include <cuda_runtime.h>
+#include <limits.h>
 //#include <omp.h>
 
+#include <cuda_runtime.h>
 #include "helper_cuda.h"
 
 #include "cudautils.h"
@@ -115,6 +116,8 @@ int main(int argc, char* argv[]) {
   printf(" ++++++++++++++++++++++++++++++++ DEBUG MODE ++++++++++++++++++++++++++++++++\n");
 #endif
   
+  //if (num_threads > PTHREAD_THREADS_MAX) { printf("to many threads!"); exit(0); } <- look for in limits.h ???
+  
   // print device properties
   print_device();
   
@@ -133,6 +136,9 @@ int main(int argc, char* argv[]) {
 #ifdef IMAG_TIME
   printf("****************************************************************************************************************\n");
   printf("*                                       IMAGINARY TIME EVOLUTION                                               *\n");
+#ifdef IMPINT
+  printf("*                                           PHASE IMPRINTING                                                   *\n");
+#endif
   printf("****************************************************************************************************************\n");
 #endif
   printf("Simulation params: \n");
@@ -180,9 +186,7 @@ int main(int argc, char* argv[]) {
     
     printf("\n");
   }
-    
-  // create streams (CUDA)
-  streams = (cudaStream_t*) malloc( (size_t) sizeof(cudaStream_t)*num_streams );
+  
   
   // create threads (POSIX)
   pthread_t* threads = (pthread_t*) malloc( (size_t) sizeof(pthread_t)*num_threads );

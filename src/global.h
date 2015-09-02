@@ -30,7 +30,7 @@
 // #define XMAX ((double) 5./sqrt(OMEGA) )
 // #else
 #define XMAX ((double) .5)
-#define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )
+#define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )*0.2
 // #endif
 #define XMIN (-XMAX)
 #define DX ((double) (XMAX - XMIN)/(NX))
@@ -42,15 +42,15 @@
 
 // TIMESTEP LENGTH
 #ifdef IMAG_TIME
-#define DT ((double) 1e-4/OMEGA)
+#define DT ((double) 1e-3/OMEGA)
 #else
 #define DT ((double) 1e-7)
 #endif
 
 
 
-#define G_CONTACT 5*OMEGA//((double) 10/((XMAX - XMIN)*sqrt(OMEGA)) )
-#define G_DIPOLAR ((double) 0. )
+#define G_CONTACT 2.*sqrt(OMEGA)/(XMAX - XMIN) // g contact in oscilatory units
+#define G_DIPOLAR 1000. // now it is equal to add
 
 
 

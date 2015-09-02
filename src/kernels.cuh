@@ -28,6 +28,7 @@ __global__ void ker_const_1d(cuDoubleComplex* wf);
 __global__ void ker_normalize_1d(cufftDoubleComplex* cufft_inverse_data); // normalize after CUFFT (only)
 __global__ void ker_create_propagator_T(cuDoubleComplex* propagator_T_dev);
 __global__ void ker_print_Z(cuDoubleComplex* arr_dev);
+__global__ void ker_phase_imprint_1d(cuDoubleComplex* wf);
 
 
 

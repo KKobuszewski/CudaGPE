@@ -71,10 +71,10 @@ __global__ void ker_normalize_1d(cufftDoubleComplex* cufft_inverse_data) {
   // in both kernel as well as callback we use predefined N to have comparable performance results
   
   while (ii < NX) {
-    cufft_inverse_data[ii] = make_cuDoubleComplex( cuCreal(cufft_inverse_data[ii])/((double) NX), cuCimag(cufft_inverse_data[ii])/((double) NX) );
+    //cufft_inverse_data[ii] = make_cuDoubleComplex( cuCreal(cufft_inverse_data[ii])/((double) NX), cuCimag(cufft_inverse_data[ii])/((double) NX) );
     // check division Intrinsics ddiv_rz <- round to zero mode (maybe less problems with norm ??? & faster )
-    //cufft_inverse_data[ii] = make_cuDoubleComplex( __ddiv_rn(cuCreal(cufft_inverse_data[ii]),(double) NX) ,
-	//					   __ddiv_rn(cuCimag(cufft_inverse_data[ii]),(double) NX) );
+    cufft_inverse_data[ii] = make_cuDoubleComplex( __ddiv_rd(cuCreal(cufft_inverse_data[ii]),(double) NX) ,
+                                                   __ddiv_rd(cuCimag(cufft_inverse_data[ii]),(double) NX) );
     ii += blockDim.x * gridDim.x;
   }
 }
@@ -169,6 +169,23 @@ __global__ void ker_modulus_pow2_wf_1d(cuDoubleComplex* complex_arr_dev, double*
   }
   
 }
+// TODO: Check what is quicker (above or this):
+__global__ void ker_density_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_arr_dev) {
+  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+  double re_wf_reg;
+  double im_wf_reg;
+#ifdef DEBUG
+  if(ii%4 == 0) printf("x:%.15f\twf:%15f + %15fj\tRe^2:%15f\tIm^2:%15f\n", XMIN + ii*DX, complex_arr_dev[ii].x, complex_arr_dev[ii].y, complex_arr_dev[ii].x*complex_arr_dev[ii].x, complex_arr_dev[ii].y*complex_arr_dev[ii].y);
+#endif
+  
+  while (ii < NX) {
+    re_wf_reg = complex_arr_dev[ii].x;
+    im_wf_reg = complex_arr_dev[ii].y;
+    double_arr_dev[ii] = re_wf_reg*re_wf_reg + im_wf_reg*im_wf_reg;
+    ii += blockDim.x * gridDim.x;
+  }
+  
+}
 
 __global__ void ker_arg_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_arr_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
@@ -180,162 +197,29 @@ __global__ void ker_arg_wf_1d(cuDoubleComplex* complex_arr_dev, double* double_a
   
 }
 
-/* 
- * TEN KERNEL POWINIEN BYC JESZCZE UDOSKONALONY JAK KAZDY Z RESZTA
- * NA RAZIE MOZNA ZASTAPIC CUBLAS: cublasStatus_t cublasDznrm2(cublasHandle_t handle, int n,const cuDoubleComplex *x, int incx, double *result)
- * http://docs.nvidia.com/cuda/cublas/#cublas-lt-t-gt-nrm2
- */
-__global__ void ker_count_norm_wf_1d(cuDoubleComplex* complex_arr_dev, double* norm_dev) {
-  extern __shared__ double shared_mods[]; // CZY TO SIE ZMIESCI W SHARED MEMORY ???
-  
-  uint16_t tid = threadIdx.x;
-  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
-  if (ii == 0) *norm_dev = 0;
-  
-  // load |psi|^2(x) to shared memory
-  //shared_mods[tid] = cuCreal(complex_arr_dev[ii])*cuCreal(complex_arr_dev[ii]) + cuCimag(complex_arr_dev[ii])*cuCimag(complex_arr_dev[ii]);
-  if (ii < NX*NY*NZ)
-    shared_mods[tid] = cuCSqAbs(complex_arr_dev[ii]);// + cuCSqAbs(complex_arr_dev[ii + blockDim.x]); // blockDim.x MUSI BYC ODPOWIEDNIEJ DLUGOSCI
-  __syncthreads();
-  
-  // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
-  for (uint32_t s=blockDim.x/2; s > 0; s>>=1) {
-    // sequential addressing in shared memory
-    if (tid < s) {
-      shared_mods[tid] += shared_mods[tid+s];
-    }
-    
-    __syncthreads();
-  }
-  
-  // add results to variable in global memory <- CZY W TEN SPOSOB TO NIE BEDZIE POWODOWAC BLEDOW ???
-  if (tid==0) *norm_dev += shared_mods[0];
-  
-  __syncthreads();
-  //if (ii == 0) *norm_dev *= sqrt(DX);
-  
-}
-
+// TODO: check if cublasZdscale is not more efficient?
 __global__ void ker_normalize_1d(cuDoubleComplex* data, double* norm) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   
   // SPRAWDZIC CZY NIE DA SIE PRZYSPIESZYC POPRZEZ CONSTANT / SHARED MEMOMRY (SKOPIOWAC TAM WARTOSC NORMY) !!!
   
-  while (ii < NX) {
+  while (ii < NX*NY*NZ) {
     data[ii] = make_cuDoubleComplex( cuCreal(data[ii])/(*norm)/sqrt(DX), cuCimag(data[ii])/(*norm)/sqrt(DX) );
     ii += blockDim.x * gridDim.x;
   }
 }
 
 
-__global__ void ker_energy_T_1d(cuDoubleComplex* wf_k, double* T_mean) {
-  extern __shared__ double shared_mods[]; // CZY TO SIE ZMIESCI W SHARED MEMORY ???
-  
-  uint16_t tid = threadIdx.x;
-  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
-  if (ii == 0) *T_mean = 0;
-  
-  // load psi* x Op(psi) to shared memory;
-  if (ii < NX*NY*NZ)
-    shared_mods[tid] = operator_T_dev(wf_k[ii], ii);
-  __syncthreads();
-  
-  // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
-  for (uint32_t s=blockDim.x/2; s > 0; s>>=1) {
-    // sequential addressing in shared memory
-    if (tid < s) {
-      shared_mods[tid] += shared_mods[tid+s];
-    }
-    
-    __syncthreads();
-  }
-  
-  // add results to variable in global memory <- CZY W TEN SPOSOB TO NIE BEDZIE POWODOWAC BLEDOW ???
-  if (tid==0) *T_mean += shared_mods[0];
-}
-
-__global__ void ker_energy_Vext_1d(cuDoubleComplex* wf, double* Vext_mean) {
-  extern __shared__ double shared_mods[]; // CZY TO SIE ZMIESCI W SHARED MEMORY ???
-  
-  uint16_t tid = threadIdx.x;
-  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
-  if (ii == 0) *Vext_mean = 0;
-  
-  // load psi* x Op(psi) to shared memory;
-  if (ii < NX*NY*NZ)
-    shared_mods[tid] = operator_Vext_dev(wf[ii], ii);
-  __syncthreads();
-  
-  // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
-  for (uint32_t s=blockDim.x/2; s > 0; s>>=1) {
-    // sequential addressing in shared memory
-    if (tid < s) {
-      shared_mods[tid] += shared_mods[tid+s];
-    }
-    
-    __syncthreads();
-  }
-  
-  // add results to variable in global memory <- CZY W TEN SPOSOB TO NIE BEDZIE POWODOWAC BLEDOW ???
-  if (tid==0) *Vext_mean += shared_mods[0];
-}
-
-
-
-//		!!!!!!!!!!!!!!!!!!   TO NIE DZIALA   !!!!!!!!!!!!!!!!!!!
-/*
- * Kernel that counts expected value of an operator represented by function passed in dev_funcZ_ptr_t operator
- * dev_funcZ_ptr_t operator - (host copy of) device pointer to device function representing action of diagonal operator on wavefunction
- * double* mean - pointer to device memory location to store <operator>
- * 
- */
-__global__ void ker_operator_mean_1d( dev_funcZ_ptr_t func, cuDoubleComplex* wf, double* mean ) {
-  extern __shared__ double shared_mods[]; // CZY TO SIE ZMIESCI W SHARED MEMORY ???
-  
-  uint16_t tid = threadIdx.x;
-  uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
-  
-  // load psi* x Op(psi) to shared memory;
-  if (ii < NX*NY*NZ)
-    shared_mods[tid] = func(wf[ii], ii);
-  __syncthreads();
-  
-  // simple reduction - look at http://sbel.wisc.edu/Courses/ME964/2012/Lectures/lecture0313.pdf
-  for (uint32_t s=blockDim.x/2; s > 0; s>>=1) {
-    // sequential addressing in shared memory
-    if (tid < s) {
-      shared_mods[tid] += shared_mods[tid+s];
-    }
-    
-    __syncthreads();
-  }
-  
-  // add results to variable in global memory <- CZY W TEN SPOSOB TO NIE BEDZIE POWODOWAC BLEDOW ???
-  if (tid==0) *mean += shared_mods[0];
-  
-  //__syncthreads();
-  //if (ii == 0) *mean *= sqrt(DX);
-    
-}
-
 
 /*
  * PROPAGATION VIA CONTACT INTERACTIONS
  */
 __global__ void ker_propagate_Vcon_1d(cuDoubleComplex* wf, double* density) {
-  //extern __shared__ double factor[];
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
-  //uint16_t tid = threadIdx.x;
+  //double gpsi2dt_reg;
   
   while (ii < NX*NY*NZ) {
-    
-    //factor[tid] = G_CONTACT*density[ii]*NX*NY*NZ;// gN|\psi|^2
-    
-// #ifdef DEBUG
-//     if (ii%4 == 0) printf("x: %.15f\twavefunction before progration Vcon: %.15f + %.15fj\tdensity: %.15f\n", XMIN + ii*DX,cuCreal(wf[ii]),cuCimag(wf[ii]),density[ii]);
-//     __syncthreads();
-// #endif
-    // WYTESTOWAC CZY SZYBSZE NIE BEDZIE OBLICZANIE PROPAGATORA
+    //gpsi2dt_reg =  G_CONTACT*density[ii]*DT;
 #ifdef REAL_TIME
     wf[ii] = cuCmul(  wf[ii], make_cuDoubleComplex(  cos( G_CONTACT*density[ii]*DT ),-sin( G_CONTACT*density[ii]*DT )  )  );
     //wf[ii] = cuCmul(  wf[ii], make_cuDoubleComplex(cos(factor[tid]*DT),-sin(factor[tid]*DT))  );
@@ -343,9 +227,6 @@ __global__ void ker_propagate_Vcon_1d(cuDoubleComplex* wf, double* density) {
 #ifdef IMAG_TIME
     wf[ii] = cuCmul( wf[ii], exp(-G_CONTACT*density[ii]*DT) );
 #endif
-// #ifdef DEBUG
-//     if (ii < 10) printf("wavefunction after progration Vcon: %.15f + %.15fj\n",cuCreal(wf[ii]),cuCimag(wf[ii]));
-// #endif
     
     ii += blockDim.x * gridDim.x;
   }
@@ -392,6 +273,37 @@ __global__ void ker_propagate_Vint_1d(cuDoubleComplex* wf, cuDoubleComplex* Vint
  *          PHASE IMPRINTING
  * double* phase is an array contaning phase on grid in radians
  */
+__global__ void ker_phase_imprint_1d(cuDoubleComplex* wf) {
+    uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+    
+    // register variables <- quicker?
+    double mod_wf;
+    double phase_reg;
+    
+    while (ii < NX*NY*NZ) {
+        mod_wf = cuCabs(wf[ii]);
+        /* SINGLE SOLITON IN CENTRE
+        if ( (XMIN + ii*DX) < 0. ) phase_reg = -M_PI/2.;
+        else phase_reg = M_PI/2.;
+        */
+#ifdef V_EXT
+        /* SINGLE SOLITON MOVED RIGHT */
+        if ( (XMIN + ii*DX) < SIGMA*0.5 ) phase_reg = -M_PI/2.;
+        else phase_reg = M_PI/2.;
+#else
+        /* TWO SYMETRICAL SOLITONS */
+        if ( ((XMIN + ii*DX) < -0.1 ) || ((XMIN + ii*DX) > 0.1 ) )
+            phase_reg = 0.;
+        else
+            phase_reg = M_PI;
+#endif
+        wf[ii] = make_cuDoubleComplex( mod_wf*cos(phase_reg) , mod_wf*sin(phase_reg) );
+        
+        ii += blockDim.x * gridDim.x;
+    }
+    
+}
+
 __global__ void ker_phase_imprint_1d(cuDoubleComplex* wf, double* phase) {
     uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
     
@@ -410,9 +322,19 @@ __global__ void ker_phase_imprint_1d(cuDoubleComplex* wf, double* phase) {
     
 }
 
-
-
-
+__global__ void ker_phase_init_1d(double* phase) {
+    uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
+    
+    double phase_reg;
+    
+    while (ii < NX*NY*NZ) {
+        
+        if ( (XMIN + ii*DX) < 0. ) phase_reg = -M_PI;
+        else phase_reg = M_PI;
+        
+        ii += blockDim.x * gridDim.x;
+    }
+}
 
 /* ************************************************************************************************************************************* *
  * 																	 *
@@ -475,7 +397,9 @@ __global__ void ker_Vext_wf(cuDoubleComplex* wf_dev, cuDoubleComplex* result_dev
  * 																	 *
  * ************************************************************************************************************************************* */
 
-
+/*
+ * This function counts: | gN|\psi|^2 \psi>
+ */
 __global__ void ker_Vcon_wf(cuDoubleComplex* wf_dev, double* density, cuDoubleComplex* result_dev) {
   uint64_t ii = blockIdx.x*blockDim.x + threadIdx.x;
   

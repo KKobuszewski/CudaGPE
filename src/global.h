@@ -45,7 +45,7 @@
 #ifdef IMAG_TIME
 #define DT ((double) 1e-5/OMEGA)
 #else
-#define DT ((double) 1e-7)
+#define DT ((double) 1e-8)
 #endif
 
 

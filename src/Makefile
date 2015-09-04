@@ -20,8 +20,7 @@ NVCCINC=-I $(CUDASDK)/common/inc
 CULIBS    = -lcufft -lcublas -lgomp
 
 # one must define evolution type: EVOLUTION = REAL_TIME/IMAG_TIME (these values are predefined macros in code)
-DEF       = -DV_EXT -DV_CON 
-#-DV_DIP
+DEF       = -DV_EXT -DV_CON -DV_DIP
 #
 # -DLOOSES
 # ...

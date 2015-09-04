@@ -241,9 +241,9 @@ def process_frames(directory, evolution_type, dt,timesteps,frames, xmin, xmax, d
     data = np.memmap(fname,dtype=np.complex128)
     
     print(data.shape)
-    print('number of frames in file:',data.shape[0]/1024)
+    print('number of frames in file:',data.shape[0]/Nx)
     
-    frames_num = data.shape[0]/1024 -1
+    frames_num = data.shape[0]/Nx -1
     x = np.linspace(xmin,xmax-dx,Nx)
     t = np.linspace(0,timesteps,frames_num+1)
     

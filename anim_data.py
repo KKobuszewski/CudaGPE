@@ -1,6 +1,7 @@
 #from __future__ import divsion
 #from __future__ import printing
 
+import glob
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import animation as anim
@@ -8,21 +9,27 @@ import scipy.optimize as o
 import scipy.special as s
 from scipy.fftpack import *
 
+Nx = 2048
+data = np.memmap(glob.glob("./wf_frames*.bin")[0],dtype=np.complex128)
+print(data.shape)
+print('number of frames in file:',data.shape[0]/Nx)
 
-data = np.memmap("./data/wf_r_Nz1024_dt0.010000_tsteps_100.bin",dtype=np.complex128)
-data = np.reshape(data,(-1,100))
 
-
-x = np.linspace(-0.5,0.5,data.shape[0])
-columns = np.arange(data.shape[1])
+frames_num = data.shape[0]/Nx -1
+x = np.linspace(-0.5,0.5-1./Nx,Nx)
+t = np.linspace(0,frames_num,frames_num+1)
+X, T = np.meshgrid(x,t)
+data = np.reshape(data,X.shape)
 
 print(data.shape)
+print(data)
 
 fig = plt.figure()
 ax1 = fig.add_subplot(111,xlim=(-0.5,0.5),ylim=(-1.1,1.1))
-psi_re, = ax1.plot([],[],label=r'$Re$ $\psi$')
-psi_im, = ax1.plot([],[],label=r'$Im$ $\psi$')
-#ax1.plot(x,np.abs(data[:,column]),label=r'$|\psi|$')
+#psi_re, = ax1.plot([],[],label=r'$Re$ $\psi$')
+#psi_im, = ax1.plot([],[],label=r'$Im$ $\psi$')
+psi2,   = ax1.plot([],[],label=r'$|\psi|$')
+phase,  = ax1.plot([],[],label=r'$arg \psi$')
 ax1.grid(True)
 ax1.legend()
 #fig.show()
@@ -32,25 +39,30 @@ ax1.legend()
 
 def init():
     
-    psi_re.set_data([],[])
-    psi_im.set_data([],[])
+    #psi_re.set_data([],[])
+    #psi_im.set_data([],[])
+    psi2.set_data([],[])
+    phase.set_data([],[])
     
-    return (psi_re,psi_im)
+    #return (psi_re,psi_im)
+    return (psi2,phase)
 
 def animate(i):
-    column = columns[i]
-    print(i,column)
+    print('frame',i)
     
-    psi_re.set_data(x,data[:,column].real)
-    psi_im.set_data(x,data[:,column].imag)
+    #psi_re.set_data(x,data[i,:].real)
+    #psi_im.set_data(x,data[i,:].imag)
+    psi2.set_data(x,np.abs(data[i,:]))
+    phase.set_data(x,np.angle(data[i,:]))
     
-    return (psi_re,psi_im)
+    #return (psi_re,psi_im)
+    return (psi2,phase)
 
 # specify time steps and duration
-frames = data.shape[1]
-print("frames:",frames)
+#frames = data.shape[1]
+print("frames:",frames_num)
 
 anim = anim.FuncAnimation(fig, animate, init_func=init,
-                               frames=frames, interval=200, blit=True)
+                               frames=int(frames_num), interval=200, blit=True)
 plt.show()
 

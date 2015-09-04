@@ -32,17 +32,23 @@ cudaEvent_t start_t;
 cudaEvent_t stop_t;
 
 #ifdef IMAG_TIME
-const uint64_t time_tot = 1e-02/DT;
+const uint64_t time_tot = 1e-01/DT;
 //const uint64_t time_tot = 1000000;
 #else
     #ifdef V_EXT
-    //const uint64_t time_tot = 2*llround((2*3.14159265358979323846/OMEGA)/DT); // harmonic potential revival time
-    const uint64_t time_tot = 1000*llround((2*3.14159265358979323846/OMEGA)/DT); // harmonic potential revival time
+    const uint64_t time_tot = 2*llround((2*3.14159265358979323846/OMEGA)/DT); // harmonic potential revival time
+    //const uint64_t time_tot = 1000*llround((2*3.14159265358979323846/OMEGA)/DT); // harmonic potential revival time
     #else
-    const uint64_t time_tot = llround(0.318309886183791/DT); // no Vext revival time
+    //const uint64_t time_tot = llround(0.318309886183791/DT); // no Vext revival time
+    const uint64_t time_tot = 1e07;
     #endif
 #endif
+#ifdef REAL_TIME
+const uint64_t frames_to_be_saved = 500;
+#endif
+#ifdef IMAG_TIME
 const uint64_t frames_to_be_saved = 100;
+#endif
 volatile uint64_t timesteps_tot = time_tot/frames_to_be_saved;
 #ifdef DEBUG
 volatile uint64_t timesteps = 2;
@@ -278,9 +284,7 @@ double* Vdd_dev; // array of costant factors <- count on host with spec funcs li
 
 // constant memory <- 2nd option to do that
 //TODO: Test if it is quicker and how big it could be
-__constant__ cuDoubleComplex const_propagator_T_dev[NX*NY*NZ]; // array of constant factors e^-ik**2/2dt
-__constant__ cuDoubleComplex const_propagator_Vext_dev[NX*NY*NZ]; // array of constant factors e^-iVextdt
-__constant__ double const_Vdd_dev[NX*NY*NZ]; // array of costant factors <- count on host with spec funcs lib or use Abramowitz & Stegun approximation
+
 
 __constant__ double const_dt_dev;
 __constant__ double const_g_contact_dev;
@@ -673,6 +677,7 @@ void* helper_thread(void* passing_ptr) {
          
          // saving wavefunction <- this assumes that wavefunction is copied 
          fwrite( wf_r_host, sizeof(double complex), NX*NY*NZ, (files[WF_FRAMES_FILE])->data );
+         fwrite( wf_k_host, sizeof(double complex), NX*NY*NZ, (files[WF_K_FILE])->data );
          save_stats_host(counter);
          
          if (!FLAG_RUN_SIMULATION) break;
@@ -888,95 +893,6 @@ inline void create_propagators() {
   // copying V particle-particle to dev
   HANDLE_ERROR( cudaMemcpyAsync(Vdd_dev, Vdd_host,
 				NX*NY*NZ*sizeof(double),
-				cudaMemcpyHostToDevice,
-				streams[SIMULATION_STREAM]) );
-#endif
-  
-#ifdef DEBUG
-  /*
-  HANDLE_ERROR( cudaMemcpyAsync(propagator_T_host, propagator_T_dev,
-				NX*NY*NZ*sizeof(cuDoubleComplex),
-				cudaMemcpyDeviceToHost,
-				(streams)[HELPER_STREAM]) );
-				*/
-#endif
-  
-  // saving to file propagators T, Vext, and F{ Vdd }
-  /*
-   * TODO: place this in helper thread on host
-   */
-  fprintf( (files[PROPAGATORS_FILE])->data, "x\t\t\tRe[e^-iVext(x)dt]\tIm[e^-iVext(x)dt]\tkx\t\t\tRe[e^-iT(kx)dt]\tIm[e^-iT(kx)dt]\tVdd\n"); // header
-  for (uint64_t ii=0; ii < NX*NY*NZ; ii++) {
-         fprintf( (files[PROPAGATORS_FILE])->data,
-                  "%.15f\t%.15f\t%.15f\t%.15f\t%.15f\t%.15f\t%.15f\n",
-                  XMIN + ii*DX, 
-                  creal(propagator_Vext_host[ii]), cimag(propagator_Vext_host[ii]),
-                  kx(ii), creal(propagator_T_host[ii]), cimag(propagator_T_host[ii]),
-                  Vdd_host[ii] );
-  }
-  
-}
-
-/*
- * This function counts arrays required in a simulation and copies them to constant memory on device.
- */
-inline void create_propagators_const_mem() {
-#ifdef VERBOSE
-  printf("creating propagators in constant memory!\n");
-#endif
-  /*
-   * create propagators & copy them on device
-   * (doing on host because its more accurate and easier with complex, gsl functions - no sense to make higher numerical error in every step)
-   */
-  
-  //omp_set_num_threads(6); // set threads for OMP <- TODO: How to set wich cpu cores are taken - do not use core for helper thread !!!
-  
-  
-  // Kinetic energy propagator  TODO: Maybe possible to verctorize with gcc!
-  #pragma omp parallel for num_threads(7) schedule(dynamic)
-  for( uint64_t ii=0; ii < NX; ii++ ) {
-#ifdef IMAG_TIME
-    propagator_T_host[ii] = cexpl(-kx(ii)*0.5*kx(ii)*DT);
-#else
-    propagator_T_host[ii] = cexpl(-I*kx(ii)*(0.5*kx(ii)*DT));
-#endif
-  }
-  // copying propag T to dev
-  HANDLE_ERROR( cudaMemcpyToSymbolAsync(const_propagator_T_dev, propagator_T_host,
-				NX*NY*NZ*sizeof(cuDoubleComplex), 0 /*offset*/,
-				cudaMemcpyHostToDevice,
-				(streams)[HELPER_STREAM]) );
-  
-#ifdef V_EXT
-  // Vext propagator  TODO: Maybe possible to verctorize with gcc!
-  #pragma omp parallel for num_threads(6) schedule(dynamic)
-  for( uint64_t ii=0; ii < NX; ii++ ) {
-#ifdef IMAG_TIME
-    propagator_Vext_host[ii] = cexpl(-(0.5*OMEGA*OMEGA*(ii*DX+XMIN)*(ii*DX+XMIN)*DT)); // <- !!! KOLEJNOSC MNOZEMIA A DOKLADNOSC !!!
-#else
-    propagator_Vext_host[ii] = cexpl(-I*(0.5*OMEGA)*(OMEGA*(ii*DX+XMIN))*((ii*DX+XMIN)*DT)); // <- !!! KOLEJNOSC MNOZEMIA A DOKLADNOSC !!!
-#endif
-  }
-  // copying propag Vext to dev
-  HANDLE_ERROR( cudaMemcpyToSymbolAsync(const_propagator_Vext_dev, propagator_Vext_host,
-				NX*NY*NZ*sizeof(cuDoubleComplex), 0 /*offset*/,
-				cudaMemcpyHostToDevice,
-				(streams)[HELPER_STREAM]) );
-#endif
-  
-#ifdef V_DIP
-  // particle-particle interaction potential (in momentum space!)
-  // there is an assumption that potentials that converges to 0 quicker than 1/r^3 could be replaced with dirac delta potential (contact interaction)
-//  TODO: Maybe possible to verctorize with gcc!
-  #pragma omp parallel for num_threads(6) schedule(dynamic)
-  for( uint64_t ii=0; ii < NX; ii++ ) {
-    // test it using contact interactions only
-    // TODO: Check if the FFT is normalized!
-    Vdd_host[ii] = Vdd(kx(ii),G_DIPOLAR,1.)/NX + G_CONTACT*SQRT_2PI/NX; // dipolar + contact interactions
-  }
-  // copying V particle-particle to dev
-  HANDLE_ERROR( cudaMemcpyToSymbolAsync(const_Vdd_dev, Vdd_host,
-				NX*NY*NZ*sizeof(double), 0 /*offset*/,
 				cudaMemcpyHostToDevice,
 				streams[SIMULATION_STREAM]) );
 #endif

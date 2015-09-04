@@ -14,7 +14,7 @@
 
 
 // simulation parameters
-#define NX ( (uint32_t) 1024 ) // type should be large enough to collect NX*NY*NZ
+#define NX ( (uint32_t) 2048 ) // type should be large enough to collect NX*NY*NZ
 #define NY ( (uint32_t) 1 )
 #define NZ ( (uint32_t) 1 )
 #define DIM 1
@@ -30,7 +30,8 @@
 // #define XMAX ((double) 5./sqrt(OMEGA) )
 // #else
 #define XMAX ((double) .5)
-#define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )*0.2
+//#define OMEGA ( 0.5*3.14159265358979323846*((double) NX)/ (2*XMAX*XMAX) )
+#define OMEGA ((double) 500. )
 // #endif
 #define XMIN (-XMAX)
 #define DX ((double) (XMAX - XMIN)/(NX))
@@ -42,15 +43,15 @@
 
 // TIMESTEP LENGTH
 #ifdef IMAG_TIME
-#define DT ((double) 1e-3/OMEGA)
+#define DT ((double) 1e-5/OMEGA)
 #else
 #define DT ((double) 1e-7)
 #endif
 
 
 
-#define G_CONTACT 2.*sqrt(OMEGA)/(XMAX - XMIN) // g contact in oscilatory units
-#define G_DIPOLAR 1000. // now it is equal to add
+#define G_CONTACT 100.*sqrt(OMEGA)/(XMAX - XMIN) // g contact in oscilatory units
+#define G_DIPOLAR 0. // now it is equal to add
 
 
 
@@ -114,7 +115,7 @@ const uint8_t num_plans = 4;
 enum thread_id {SIMULATION_THRD, HELPER_THRD};
 enum stream_id {SIMULATION_STREAM, HELPER_STREAM};
 enum plan_id {FORWARD_PSI, BACKWARD_PSI, FORWARD_DIPOLAR, BACKWARD_DIPOLAR};
-enum file_id {SIM_PARAMS_FILE, STATS_FILE, WF_FRAMES_FILE, PROPAGATORS_FILE};
+enum file_id {SIM_PARAMS_FILE, STATS_FILE, WF_FRAMES_FILE, PROPAGATORS_FILE,WF_K_FILE};
 
 
 

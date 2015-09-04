@@ -282,7 +282,7 @@ __global__ void ker_phase_imprint_1d(cuDoubleComplex* wf) {
     
     while (ii < NX*NY*NZ) {
         mod_wf = cuCabs(wf[ii]);
-        /* SINGLE SOLITON IN CENTRE
+        /* SINGLE SOLITON IN CENTRE 
         if ( (XMIN + ii*DX) < 0. ) phase_reg = -M_PI/2.;
         else phase_reg = M_PI/2.;
         */
@@ -291,11 +291,11 @@ __global__ void ker_phase_imprint_1d(cuDoubleComplex* wf) {
         if ( (XMIN + ii*DX) < SIGMA*0.5 ) phase_reg = -M_PI/2.;
         else phase_reg = M_PI/2.;
 #else
-        /* TWO SYMETRICAL SOLITONS */
-        if ( ((XMIN + ii*DX) < -0.1 ) || ((XMIN + ii*DX) > 0.1 ) )
+        /* TWO SYMETRICAL SOLITONS 
+        if ( ((XMIN + ii*DX) < -0.15 ) || ((XMIN + ii*DX) > 0.15 ) )
             phase_reg = 0.;
         else
-            phase_reg = M_PI;
+            phase_reg = M_PI;*/
 #endif
         wf[ii] = make_cuDoubleComplex( mod_wf*cos(phase_reg) , mod_wf*sin(phase_reg) );
         

@@ -143,17 +143,18 @@ int main(int argc, char* argv[]) {
 #endif
   printf("Simulation params: \n");
   printf("dimensions: %u\n", DIM);
-  printf("lattice points in direction x: %u\n", NX);
-  printf("lattice points in direction y: %u\n", NY);
-  printf("lattice points in direction z: %u\n", NZ);
+  printf("lattice: %u x %u x %u\n", NX, NY, NZ);
   printf("total number of points in a lattice: %u, 2**%u\n", NX*NY*NZ, (uint32_t) ( log(NX*NY*NZ)/log(2) ) );
-  printf("[xmin, xmax] : [%.15f, %.15f]\n", XMIN, XMAX);
+  printf("[xmin, xmax] : [%.15f, %.15f]\t\t", XMIN, XMAX);
   printf("dx: %.15f\n",DX);
-  printf("[kxmin, kxmax] : [%.15f, %.15f]\n", KxMIN, KxMAX);
+  printf("[kxmin, kxmax] : [%.15f, %.15f]\t\t", KxMIN, KxMAX);
   printf("dkx: %.15f\n",DKx);
   //printf("width of gauss in positions space (points on lattice): %.15f\n");
   //printf("width of gauss in positions space (points on lattice): %.15f\n");
-  printf("harmonic potential angular freq.: %.15f", OMEGA);
+#ifdef V_EXT
+  printf("\nHARMONIC TRAP\n");
+  printf("angular freq.: %.15f\n", OMEGA);
+#endif
   printf("\n");
   
   
@@ -208,7 +209,7 @@ int main(int argc, char* argv[]) {
     if (CPU_ISSET(ii, &cpu_core)) printf("affinity thread %s set successfully.\n",thread_names[ii]);
   }
   set_signals_same();
-  files = open_struct_files(4);
+  files = open_struct_files(5);
   pthread_barrier_wait (&barrier_global); // global lock for threads
   
   // creating mmap to save wavefunction
@@ -230,7 +231,7 @@ int main(int argc, char* argv[]) {
   
   
   // join threads
-  pthread_barrier_wait (&barrier_global); //maybe not necessary
+  pthread_barrier_wait (&barrier_global); 
   for (uint8_t ii = 0; ii < num_threads; ii++) {
     void* status;
     pthread_join(threads[ii], &status);
@@ -238,15 +239,10 @@ int main(int argc, char* argv[]) {
   
   // save data
   
-  // close files
-  //if (backup_file) 	fclose(backup_file);
-  //if (wf_file) 		fclose(wf_file);
-  
   
   // close files
   mmap_destroy(global_stuff->init_wf_fd, init_wf_mmap, NX*NY*NZ * sizeof(double complex));
   mmap_destroy(global_stuff->wf_save_fd, wf_mmap, NX*NY*NZ * sizeof(double complex));
-  //close_files(global_stuff->files, global_stuff->num_files);
   close_struct_files(files, global_stuff->num_files);
   
   

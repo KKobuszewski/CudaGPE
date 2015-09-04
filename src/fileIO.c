@@ -83,7 +83,7 @@ struct_file** open_struct_files(const uint8_t num_files = 5) {
   //char* filenames[filename_str_lenght] = (char**) malloc( sizeof(char*)*num_files);
   for (uint8_t ii=0; ii<num_files; ii++) {
       
-      if ( (ii == WF_FRAMES_FILE) ) {   // here open files for binary operations
+      if ( (ii == WF_FRAMES_FILE) || (ii == WF_K_FILE) ) {   // here open files for binary operations
           sprintf( (files[ii])->filename,"%s/%s_dim%d_N%d.bin", dirname, files_names[ii], DIM, NX*NY*NZ );
           files[ii]->data = fopen(files[ii]->filename,"wb");
           files[ii]->mode = BINARY;
